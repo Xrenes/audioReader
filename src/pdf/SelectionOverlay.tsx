@@ -1,6 +1,9 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import type { SelectionRect } from '@/store/readerStore';
 import { useReaderStore } from '@/store/readerStore';
+import { usePlayerStore } from '@/store/playerStore';
+import { anyVoiceAvailable } from '@/tts/availability';
+import './rangemarker.css';
 
 interface Props {
   pageNumber: number;
@@ -10,30 +13,48 @@ interface Props {
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type Handle = 'tl' | 'br' | null;
 
+const HOLD_MS = 550;
+const DRAG_START = 8; // px of travel before we treat the gesture as a box-drag
+
 /**
- * Pick the passage to be read:
- *  - drag anywhere on the page to draw a box
- *  - once committed, drag the corner handles to adjust
- *  - a "Read this" chip confirms / a small ✕ clears
- * Coordinates are normalized 0–1 to the page so they survive zoom + rotation.
+ * One overlay, two ways to pick a passage:
+ *  - **drag** a box on a page  → single-region selection (handles + "Read this")
+ *  - **press & hold** (~550ms, finger still) → drop a range marker; hold again
+ *    elsewhere (even another page) for the end. PdfView shows "Read aloud".
+ *
+ * We do NOT capture the pointer until the gesture is clearly a drag, so a
+ * plain touch still scrolls the page normally.
  */
 export function SelectionOverlay({ pageNumber, onSelect }: Props) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<Box | null>(null);
-  const drawStart = useRef<{ x0: number; y0: number } | null>(null);
-  const resizing = useRef<Handle>(null);
+
+  // gesture state
+  const down = useRef<{ x: number; y: number; nx: number; ny: number; id: number } | null>(null);
+  const mode = useRef<'idle' | 'draw' | 'resize'>('idle');
+  const resizeHandle = useRef<Handle>(null);
+  const holdTimer = useRef<number>(0);
+  const holdFired = useRef(false);
 
   const selection = useReaderStore((s) => s.selection);
+  const rangeStart = useReaderStore((s) => s.rangeStart);
+  const rangeEnd = useReaderStore((s) => s.rangeEnd);
   const setSelection = useReaderStore((s) => s.setSelection);
-  const enterReadingMode = useReaderStore((s) => s.enterReadingMode);
-  const readingMode = useReaderStore((s) => s.readingMode);
+  const setRangeStart = useReaderStore((s) => s.setRangeStart);
+  const setRangeEnd = useReaderStore((s) => s.setRangeEnd);
+  const requestPlay = useReaderStore((s) => s.requestPlay);
   const committed = selection?.page === pageNumber ? selection : null;
 
-  const norm = (e: PointerEvent) => {
+  const [voiceReady, setVoiceReady] = useState(true);
+  useEffect(() => {
+    if (committed) anyVoiceAvailable().then(setVoiceReady);
+  }, [committed]);
+
+  const norm = (clientX: number, clientY: number) => {
     const r = layerRef.current!.getBoundingClientRect();
     return {
-      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
-      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+      x: Math.min(1, Math.max(0, (clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (clientY - r.top) / r.height)),
     };
   };
 
@@ -50,21 +71,62 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
     });
   };
 
-  // --- draw new box ---
+  const reset = () => {
+    window.clearTimeout(holdTimer.current);
+    down.current = null;
+    mode.current = 'idle';
+    resizeHandle.current = null;
+    setBox(null);
+  };
+
   const onPointerDown = (e: PointerEvent) => {
     if (e.pointerType === 'touch' && !e.isPrimary) return;
     if ((e.target as HTMLElement).closest('.pdf-select-handle, .pdf-select-chip')) return;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const p = norm(e);
-    drawStart.current = { x0: p.x, y0: p.y };
-    setBox({ x0: p.x, y0: p.y, x1: p.x, y1: p.y });
+    const n = norm(e.clientX, e.clientY);
+    down.current = { x: e.clientX, y: e.clientY, nx: n.x, ny: n.y, id: e.pointerId };
+    holdFired.current = false;
+    mode.current = 'idle';
+
+    // arm hold-to-mark only when there's no active box selection
+    if (!selection) {
+      holdTimer.current = window.setTimeout(() => {
+        if (!down.current) return;
+        holdFired.current = true;
+        if (navigator.vibrate) navigator.vibrate(8);
+        const { nx, ny } = down.current;
+        if (!rangeStart || (rangeStart && rangeEnd)) {
+          setRangeEnd(null);
+          setRangeStart({ page: pageNumber, x: nx, y: ny });
+        } else {
+          setRangeEnd({ page: pageNumber, x: nx, y: ny });
+        }
+        down.current = null; // consumed; a following move won't draw a box
+      }, HOLD_MS);
+    }
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    const p = norm(e);
-    if (resizing.current && committed) {
+    if (!down.current || holdFired.current) return;
+    const dx = e.clientX - down.current.x;
+    const dy = e.clientY - down.current.y;
+    const dist = Math.hypot(dx, dy);
+    const p = norm(e.clientX, e.clientY);
+
+    if (mode.current === 'idle') {
+      if (dist < DRAG_START) return; // still might be a hold — let the browser scroll
+      // it's a drag → cancel the hold, take over the gesture, start drawing
+      window.clearTimeout(holdTimer.current);
+      (e.target as HTMLElement).setPointerCapture(down.current.id);
+      mode.current = 'draw';
+      setBox({ x0: down.current.nx, y0: down.current.ny, x1: p.x, y1: p.y });
+      return;
+    }
+
+    if (mode.current === 'draw') {
+      setBox({ x0: down.current.nx, y0: down.current.ny, x1: p.x, y1: p.y });
+    } else if (mode.current === 'resize' && committed) {
       const next: Box = { x0: committed.x0, y0: committed.y0, x1: committed.x1, y1: committed.y1 };
-      if (resizing.current === 'tl') {
+      if (resizeHandle.current === 'tl') {
         next.x0 = p.x;
         next.y0 = p.y;
       } else {
@@ -72,35 +134,39 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
         next.y1 = p.y;
       }
       setBox(next);
-      return;
     }
-    if (drawStart.current)
-      setBox({ x0: drawStart.current.x0, y0: drawStart.current.y0, x1: p.x, y1: p.y });
   };
 
   const onPointerUp = () => {
-    if (resizing.current && box) {
-      commit(box);
-      resizing.current = null;
-      setBox(null);
+    window.clearTimeout(holdTimer.current);
+    if (holdFired.current) {
+      holdFired.current = false;
+      down.current = null;
+      mode.current = 'idle';
       return;
     }
-    if (drawStart.current && box) {
-      commit(box);
-      drawStart.current = null;
-      setBox(null);
-    }
+    if ((mode.current === 'draw' || mode.current === 'resize') && box) commit(box);
+    reset();
   };
 
   const startResize = (which: Handle) => (e: PointerEvent) => {
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    resizing.current = which;
+    down.current = { x: e.clientX, y: e.clientY, nx: 0, ny: 0, id: e.pointerId };
+    mode.current = 'resize';
+    resizeHandle.current = which;
     if (committed) setBox({ x0: committed.x0, y0: committed.y0, x1: committed.x1, y1: committed.y1 });
   };
 
+  const status = usePlayerStore((s) => s.status);
+  const busy = status === 'playing' || status === 'loading';
+
   const render = box ?? committed;
-  const showCommittedChrome = Boolean(committed) && !box && !readingMode;
+  const dragging = mode.current === 'draw' || mode.current === 'resize';
+  const showChrome = Boolean(committed) && !dragging && !busy;
+
+  const startHere = rangeStart?.page === pageNumber ? rangeStart : null;
+  const endHere = rangeEnd?.page === pageNumber ? rangeEnd : null;
 
   return (
     <div
@@ -109,15 +175,13 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => {
-        drawStart.current = null;
-        resizing.current = null;
-        setBox(null);
-      }}
+      onPointerCancel={reset}
     >
       {render && (
         <div
-          className={`pdf-select-box${showCommittedChrome ? ' committed' : ''}`}
+          className={`pdf-select-box${showChrome ? ' committed' : ''}${
+            busy && committed && !dragging ? ' reading' : ''
+          }`}
           style={{
             left: `${Math.min(render.x0, render.x1) * 100}%`,
             top: `${Math.min(render.y0, render.y1) * 100}%`,
@@ -125,7 +189,7 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
             height: `${Math.abs(render.y1 - render.y0) * 100}%`,
           }}
         >
-          {showCommittedChrome && (
+          {showChrome && (
             <>
               <span
                 className="pdf-select-handle tl"
@@ -143,10 +207,11 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
                 className="pdf-select-chip"
                 onClick={(e) => {
                   e.stopPropagation();
-                  enterReadingMode();
+                  if (voiceReady) requestPlay();
+                  else useReaderStore.getState().setSheet('settings');
                 }}
               >
-                Read this
+                {voiceReady ? 'Read this' : 'Set up a voice'}
                 <span
                   className="chip-x"
                   role="button"
@@ -162,6 +227,25 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
             </>
           )}
         </div>
+      )}
+
+      {startHere && (
+        <span
+          className="range-pin range-pin-start"
+          style={{ left: `${startHere.x * 100}%`, top: `${startHere.y * 100}%` }}
+        >
+          <span className="range-pin-dot" />
+          <span className="range-pin-lbl">start</span>
+        </span>
+      )}
+      {endHere && (
+        <span
+          className="range-pin range-pin-end"
+          style={{ left: `${endHere.x * 100}%`, top: `${endHere.y * 100}%` }}
+        >
+          <span className="range-pin-dot" />
+          <span className="range-pin-lbl">end</span>
+        </span>
       )}
     </div>
   );

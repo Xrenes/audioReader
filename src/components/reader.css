@@ -1,5 +1,5 @@
 .reader {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
@@ -20,34 +20,3 @@
   overflow: hidden;
 }
 
-/* page navigator sheet contents */
-.pages-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.pages-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.pages-panel-count {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.pages-panel-count b {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* desktop: dock the two sheets as side rails, page nav on the left */
-@media (min-width: 900px) {
-  .reader-body {
-    gap: 10px;
-    padding: 10px;
-    padding-bottom: calc(var(--audiobar-h) + 10px);
-  }
-  .reader-center {
-    border-radius: var(--radius);
-  }
-}

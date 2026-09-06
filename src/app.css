@@ -1,13 +1,34 @@
+/* Phone-first, fixed-width. The app is a single ~430px column; on anything
+   wider it stays that width, centered on a black backdrop. No responsive
+   reflow, no side rails — one layout everywhere. */
+
+:root {
+  --app-w: 430px;
+}
+
+html,
+body {
+  background: #000;
+}
+
 .app {
   position: fixed;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--app-w);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--bg-void);
-  /* soft vignette so the flat black has depth behind the glass */
   background-image: radial-gradient(
     120% 80% at 50% -10%,
     rgba(110, 168, 254, 0.06),
     transparent 60%
   );
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 30px 90px rgba(0, 0, 0, 0.6);
 }

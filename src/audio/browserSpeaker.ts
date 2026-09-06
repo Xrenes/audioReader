@@ -34,7 +34,11 @@ interface Unit {
   gapMs: number;
 }
 
-const WPM = 150; // calm reading pace, for the position estimate
+// Device-voice pace estimate. speechSynthesis reads slower than a silent
+// WPM count (per-utterance latency + calmer default rate), so we assume a
+// slow ~125 wpm at rate 1 and scale by the live rate.
+const BASE_WPM = 125;
+const PER_UTTERANCE_MS = 120; // engine spin-up before each utterance
 
 /** rank a voice: higher = more natural-sounding / preferred */
 function voiceScore(v: SpeechSynthesisVoice): number {
@@ -137,9 +141,12 @@ export class BrowserSpeaker {
     });
     this.idx = 0;
     this.elapsedBefore = 0;
+    const rate = clamp(currentRate(), 0.5, 2);
     const words = this.units.reduce((n, u) => n + u.text.split(/\s+/).length, 0);
     const gapSec = this.units.reduce((n, u) => n + u.gapMs, 0) / 1000;
-    this.estTotal = (words / WPM) * 60 + gapSec;
+    const speech = (words / (BASE_WPM * rate)) * 60;
+    const overhead = (this.units.length * PER_UTTERANCE_MS) / 1000;
+    this.estTotal = speech + gapSec + overhead;
   }
 
   get estTotalSec() {
@@ -163,30 +170,38 @@ export class BrowserSpeaker {
 
   pause() {
     if (!this.playing) return;
-    this.synth.pause();
+    // speechSynthesis.pause() is unreliable across platforms (no-ops on
+    // Windows Chrome, or resume() never restarts). Hard-stop; `this.idx`
+    // already points at the sentence in progress — resume() replays it.
+    this.epoch++;
     window.clearTimeout(this.gapTimer);
-    this.playing = false;
-    this.elapsedBefore += (performance.now() - this.startedAt) / 1000;
     cancelAnimationFrame(this.raf);
+    // sync the position estimate to the sentence we're pausing on
+    this.elapsedBefore = this.secsBeforeUnit(this.idx);
+    this.playing = false;
+    this.synth.cancel();
   }
 
   resume() {
-    if (!this.units.length) return;
-    const wasPlaying = this.playing;
+    if (this.playing || !this.units.length) return;
+    this.epoch++;
     this.playing = true;
-    if (!wasPlaying) this.startedAt = performance.now();
-    this.synth.resume();
-    if (!wasPlaying) this.tick();
-    // if speech is stalled (OS suspended it on lock, or paused between
-    // units), kick the chain from the current unit
-    if (!this.synth.speaking && !this.synth.pending) this.speakFrom(this.idx);
+    this.startedAt = performance.now();
+    this.tick();
+    // continue from the sentence we paused on. Brief defer — Chrome
+    // swallows speak() fired in the same tick as cancel().
+    const myEpoch = this.epoch;
+    const from = this.idx;
+    window.setTimeout(() => {
+      if (this.playing && this.epoch === myEpoch) this.speakFrom(from);
+    }, 60);
   }
 
   /** Recover after the OS suspended speechSynthesis (screen lock). */
   recover() {
     if (!this.playing) return;
-    this.synth.resume();
-    if (!this.synth.speaking && !this.synth.pending) this.speakFrom(this.idx);
+    if (this.synth.speaking || this.synth.pending) return;
+    this.speakFrom(this.idx);
   }
 
   /** Jump to a unit index and start speaking from there. */
@@ -267,7 +282,12 @@ export class BrowserSpeaker {
   private unitSecs(i: number) {
     const u = this.units[i];
     if (!u) return 0;
-    return (u.text.split(/\s+/).length / WPM) * 60 + u.gapMs / 1000;
+    const rate = clamp(currentRate(), 0.5, 2);
+    return (
+      (u.text.split(/\s+/).length / (BASE_WPM * rate)) * 60 +
+      u.gapMs / 1000 +
+      PER_UTTERANCE_MS / 1000
+    );
   }
   private secsBeforeUnit(i: number) {
     let acc = 0;

@@ -3,20 +3,22 @@ import { loadDocument, type PDFDocumentProxy } from './pdfSetup';
 import { PdfPage } from './PdfPage';
 import { useReaderStore } from '@/store/readerStore';
 import { loadPdf } from '@/storage/db';
-import { extractSelection } from './extractText';
+import { extractSelection, extractRange, MAX_RANGE_PAGES } from './extractText';
 import { SelectionOverlay } from './SelectionOverlay';
 import { ReaderToolbar } from '@/components/ReaderToolbar';
 import { PdfState } from '@/components/PdfState';
 import { usePinchZoom } from './usePinchZoom';
+import { anyVoiceAvailable } from '@/tts/availability';
 import type { SelectionRect } from '@/store/readerStore';
 import './pdf.css';
+import './rangemarker.css';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
 /**
  * Continuously-scrolling PDF surface. Lazily renders pages, reports the
- * page nearest the viewport centre (for the thumbnail rail), supports
- * pinch-zoom, and a rotate-to-landscape mode for reading books sideways.
+ * page nearest the viewport centre, supports pinch-zoom, rotate-to-landscape,
+ * a drag-box selection AND a hold-to-mark range (which can span pages).
  */
 export function PdfView() {
   const docId = useReaderStore((s) => s.docId);
@@ -26,11 +28,22 @@ export function PdfView() {
   const setPage = useReaderStore((s) => s.setPage);
   const setSelection = useReaderStore((s) => s.setSelection);
 
+  const rangeStart = useReaderStore((s) => s.rangeStart);
+  const rangeEnd = useReaderStore((s) => s.rangeEnd);
+  const setPassage = useReaderStore((s) => s.setPassage);
+  const clearRange = useReaderStore((s) => s.clearRange);
+  const clearTarget = useReaderStore((s) => s.clearTarget);
+  const requestPlay = useReaderStore((s) => s.requestPlay);
+  const setSheet = useReaderStore((s) => s.setSheet);
+
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [errMsg, setErrMsg] = useState('');
   const [hasTextLayer, setHasTextLayer] = useState<boolean | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [rangeBusy, setRangeBusy] = useState(false);
+  const [rangeTruncated, setRangeTruncated] = useState(false);
+  const [voiceReady, setVoiceReady] = useState(true);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageEls = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -48,7 +61,6 @@ export function PdfView() {
       const d = await loadDocument(rec.bytes);
       setDoc(d);
       setLoadState('ready');
-      // probe the first couple of pages for a real text layer
       const probe = Math.min(2, d.numPages);
       let chars = 0;
       for (let i = 1; i <= probe; i++) {
@@ -97,13 +109,36 @@ export function PdfView() {
     async (rect: SelectionRect) => {
       if (!doc) return;
       const page = await doc.getPage(rect.page);
-      const text = await extractSelection(page, rect, rotation);
-      setSelection(rect, text);
+      const { text, lines, words } = await extractSelection(page, rect, rotation);
+      setSelection(rect, text, lines, words);
     },
     [doc, setSelection, rotation],
   );
 
+  // both range markers placed -> extract the multi-page passage
+  useEffect(() => {
+    if (!doc || !rangeStart || !rangeEnd) return;
+    let cancelled = false;
+    setRangeBusy(true);
+    (async () => {
+      const { text, lines, words, truncated } = await extractRange(doc, rangeStart, rangeEnd, rotation);
+      if (cancelled) return;
+      setRangeTruncated(truncated);
+      setPassage(text, lines, words);
+      setRangeBusy(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, rangeStart, rangeEnd, rotation, setPassage]);
+
+  useEffect(() => {
+    if (rangeStart && rangeEnd) anyVoiceAvailable().then(setVoiceReady);
+  }, [rangeStart, rangeEnd]);
+
   if (!docId) return null;
+
+  const rangeComplete = Boolean(rangeStart && rangeEnd);
 
   return (
     <div className="pdf-viewport">
@@ -141,6 +176,39 @@ export function PdfView() {
               </PdfPage>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* range hint / start bar */}
+      {rangeStart && !rangeEnd && (
+        <div className="range-bar">
+          <span>Now hold where the reading should end</span>
+          <button onClick={clearRange}>Clear</button>
+        </div>
+      )}
+      {rangeComplete && rangeStart && rangeEnd && (
+        <div className="range-bar range-bar-ready">
+          <button
+            className="range-start-btn"
+            disabled={rangeBusy}
+            onClick={() => {
+              if (voiceReady) requestPlay();
+              else setSheet('settings');
+            }}
+          >
+            {rangeBusy ? 'Preparing…' : voiceReady ? 'Read aloud' : 'Set up a voice'}
+          </button>
+          <span className="range-note">
+            {rangeTruncated
+              ? `first ${MAX_RANGE_PAGES} pages`
+              : `p.${Math.min(rangeStart.page, rangeEnd.page)}–${Math.max(
+                  rangeStart.page,
+                  rangeEnd.page,
+                )}`}
+          </span>
+          <button className="range-clear" onClick={clearTarget}>
+            Clear
+          </button>
         </div>
       )}
     </div>

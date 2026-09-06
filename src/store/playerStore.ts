@@ -22,14 +22,12 @@ interface PlayerState {
   chunks: Chunk[];
   currentChunkId: string | null;
   error: string | null;
-  expanded: boolean; // full-screen player vs mini bar
 
   setStatus: (s: PlaybackStatus) => void;
   setPosition: (t: number) => void;
   setTimeline: (chunks: Chunk[], total: number) => void;
   setCurrentChunk: (id: string | null) => void;
   setError: (e: string | null) => void;
-  setExpanded: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -40,14 +38,12 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   chunks: [],
   currentChunkId: null,
   error: null,
-  expanded: false,
 
   setStatus: (status) => set({ status }),
   setPosition: (position) => set({ position }),
   setTimeline: (chunks, totalDuration) => set({ chunks, totalDuration }),
   setCurrentChunk: (currentChunkId) => set({ currentChunkId }),
   setError: (error) => set({ error, status: error ? 'error' : 'idle' }),
-  setExpanded: (expanded) => set({ expanded }),
   reset: () =>
     set({
       status: 'idle',
@@ -56,6 +52,5 @@ export const usePlayerStore = create<PlayerState>((set) => ({
       chunks: [],
       currentChunkId: null,
       error: null,
-      expanded: false,
     }),
 }));

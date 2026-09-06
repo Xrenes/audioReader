@@ -21,9 +21,9 @@ export function Reader() {
         </main>
       </div>
 
-      {/* page navigator — hidden until the Pages button is tapped */}
-      <GlassSheet open={sheet === 'pages'} onClose={() => setSheet('pages')} title="Pages" side="left">
-        <PagesPanel />
+      {/* page navigator — narrow left rail, thumbnails only */}
+      <GlassSheet open={sheet === 'pages'} onClose={() => setSheet('pages')} side="left" bare>
+        <Thumbnails orientation="vertical" />
       </GlassSheet>
 
       {/* everything else lives here */}
@@ -31,27 +31,12 @@ export function Reader() {
         open={sheet === 'settings'}
         onClose={() => setSheet('settings')}
         title="Settings"
-        side="right"
+        side="bottom"
       >
         <VoiceSettings />
       </GlassSheet>
 
       <AudioBar />
-    </div>
-  );
-}
-
-function PagesPanel() {
-  const current = useReaderStore((s) => s.currentPage);
-  const total = useReaderStore((s) => s.numPages);
-  return (
-    <div className="pages-panel">
-      <div className="pages-panel-head">
-        <span className="pages-panel-count">
-          Page <b>{current}</b> of {total || '—'}
-        </span>
-      </div>
-      <Thumbnails orientation="grid" />
     </div>
   );
 }

@@ -1,53 +1,94 @@
 .rtoolbar {
   position: absolute;
   z-index: 20;
-  top: 10px;
+  top: calc(var(--safe-top) + 60px); /* clear the floating button row + a gap */
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 4px;
+  gap: 1px;
+  padding: 3px 4px;
   border-radius: var(--radius-pill);
+  max-width: calc(100% - 24px);
 }
 
 .rtb-btn {
-  min-width: 34px;
-  height: 34px;
-  padding: 0 8px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 7px;
   border-radius: var(--radius-pill);
   display: grid;
   place-items: center;
   font-size: 16px;
   color: var(--text-secondary);
-  transition: background var(--dur-fast), color var(--dur-fast);
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
 }
 .rtb-btn:active {
   background: var(--glass-highlight);
   color: var(--text-primary);
 }
+.rtb-btn:disabled {
+  opacity: 0.4;
+}
 
 .rtb-level {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  min-width: 44px;
+  min-width: 42px;
   color: var(--text-tertiary);
 }
 
 .rtb-sep {
   width: 1px;
-  height: 20px;
+  height: 18px;
   background: var(--glass-border);
-  margin: 0 4px;
+  margin: 0 3px;
+  flex-shrink: 0;
+}
+
+/* page number / jump field */
+.rtb-page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 32px;
+  font-size: 12px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+  min-width: 46px;
+  padding: 0 8px;
+}
+.rtb-page-total {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.rtb-page-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.rtb-page-input {
+  width: 32px;
+  height: 26px;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
 }
 
 .rtb-rotate.on {
   background: var(--accent-dim);
   color: var(--accent);
-}
-
-@media (min-width: 900px) {
-  .rtoolbar {
-    top: 14px;
-  }
 }

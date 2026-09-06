@@ -40,6 +40,17 @@ export function useReadingSession() {
   const setCurrentChunk = usePlayerStore((s) => s.setCurrentChunk);
   const setError = usePlayerStore((s) => s.setError);
 
+  /** keep the moving read-marker's word on screen (auto-scroll, multi-page) */
+  const followMarker = useCallback(() => {
+    const el = document.querySelector('.pdf-scroll .rt-word') as HTMLElement | null;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight;
+    if (r.top < 100 || r.bottom > vh - 150) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
   // --- lazily create the player ---
   const getPlayer = useCallback(() => {
     if (!player.current) {
@@ -49,7 +60,10 @@ export function useReadingSession() {
           const st = usePlayerStore.getState();
           updatePositionState(st.totalDuration, t);
         },
-        onChunkChange: (id) => setCurrentChunk(id),
+        onChunkChange: (id) => {
+          setCurrentChunk(id);
+          followMarker();
+        },
         onEnded: () => {
           setStatus('ended');
           updatePlaybackState('paused');
@@ -58,7 +72,7 @@ export function useReadingSession() {
       });
     }
     return player.current;
-  }, [setPosition, setCurrentChunk, setStatus]);
+  }, [setPosition, setCurrentChunk, followMarker, setStatus]);
 
   useEffect(() => {
     // recover playback when the screen / tab comes back
@@ -349,9 +363,16 @@ export function useReadingSession() {
     stopBackgroundAudio();
   }, [getPlayer, getSpeaker, setStatus]);
 
+  const toggleLock = useRef(0);
   const toggle = useCallback(() => {
+    // ignore taps that arrive faster than speechSynthesis can settle
+    const now = performance.now();
+    if (now - toggleLock.current < 250) return;
+    toggleLock.current = now;
+
     const st = usePlayerStore.getState().status;
     if (st === 'idle' || st === 'ended' || st === 'error') return start();
+    if (st === 'loading') return;
     if (st === 'playing') return pause();
     return resume();
   }, [start, pause, resume]);

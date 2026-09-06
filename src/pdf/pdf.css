@@ -21,7 +21,7 @@
   gap: 14px;
   /* room for the floating controls at the top, none needed at the bottom
      (the audio bar sits over its own space) */
-  padding: calc(var(--safe-top) + 56px) 8px 16px;
+  padding: calc(var(--safe-top) + 104px) 8px 16px;
   scroll-behavior: smooth;
 }
 
@@ -69,6 +69,7 @@
 .pdf-select-layer {
   position: absolute;
   inset: 0;
+  z-index: 4;
   touch-action: pan-y;
   cursor: crosshair;
 }
@@ -79,6 +80,12 @@
   background: var(--accent-dim);
   border-radius: 5px;
   pointer-events: none;
+}
+
+/* while reading: keep just a faint outline so the trace highlight shows through */
+.pdf-select-box.reading {
+  border-color: rgba(110, 168, 254, 0.4);
+  background: transparent;
 }
 
 /* committed selection: dim the rest of the page, glow the pick, show handles */

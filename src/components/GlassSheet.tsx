@@ -4,18 +4,23 @@ import './glasssheet.css';
 interface Props {
   open: boolean;
   onClose: () => void;
-  title: string;
-  side?: 'left' | 'right';
+  title?: string;
+  /** 'bottom' = sheet up from the bottom; 'left' = drawer in from the left edge */
+  side?: 'bottom' | 'left' | 'right';
+  /** no header / grip / padding — just the children (used for the narrow page rail) */
+  bare?: boolean;
   children: ReactNode;
 }
 
 /**
- * Bottom sheet for mobile. Frosted black, rounded top, drag-down to dismiss.
- * On desktop these are hidden (the rails take over via CSS).
+ * Frosted-black panel. `side="left"` is a drawer that slides in from the left
+ * edge (page navigator, like a normal PDF reader); anything else is a bottom
+ * sheet with a drag-down-to-dismiss grip.
  */
-export function GlassSheet({ open, onClose, title, children }: Props) {
+export function GlassSheet({ open, onClose, title, side = 'bottom', bare = false, children }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ y0: number; dy: number } | null>(null);
+  const drag = useRef<{ from: number; d: number } | null>(null);
+  const isLeft = side === 'left';
 
   useEffect(() => {
     if (!open) return;
@@ -24,42 +29,55 @@ export function GlassSheet({ open, onClose, title, children }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // drag-down-to-dismiss for the bottom sheet only
   const onPointerDown = (e: PointerEvent) => {
-    drag.current = { y0: e.clientY, dy: 0 };
+    drag.current = { from: e.clientY, d: 0 };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: PointerEvent) => {
     if (!drag.current || !sheetRef.current) return;
-    const dy = Math.max(0, e.clientY - drag.current.y0);
-    drag.current.dy = dy;
-    sheetRef.current.style.transform = `translateY(${dy}px)`;
+    const d = Math.max(0, e.clientY - drag.current.from);
+    drag.current.d = d;
+    sheetRef.current.style.transform = `translateY(${d}px)`;
   };
   const onPointerUp = () => {
     if (!drag.current || !sheetRef.current) return;
-    const { dy } = drag.current;
+    const { d } = drag.current;
     sheetRef.current.style.transform = '';
     drag.current = null;
-    if (dy > 110) onClose();
+    if (d > 110) onClose();
   };
 
   return (
-    <div className={`sheet-root${open ? ' open' : ''}`} aria-hidden={!open}>
+    <div
+      className={`sheet-root sheet-${side}${open ? ' open' : ''}${bare ? ' sheet-bare' : ''}`}
+      aria-hidden={!open}
+    >
       <div className="sheet-scrim" onClick={onClose} />
-      <div ref={sheetRef} className="sheet glass-strong glass-lit" role="dialog" aria-label={title}>
-        <div
-          className="sheet-grip"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-        >
-          <span className="sheet-grip-bar" />
-        </div>
-        <div className="sheet-head">
-          <h2>{title}</h2>
-          <button className="sheet-close" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
+      <div
+        ref={sheetRef}
+        className="sheet glass-strong glass-lit"
+        role="dialog"
+        aria-label={title ?? 'Panel'}
+      >
+        {!isLeft && !bare && (
+          <div
+            className="sheet-grip"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+          >
+            <span className="sheet-grip-bar" />
+          </div>
+        )}
+        {!bare && (
+          <div className="sheet-head">
+            <h2>{title}</h2>
+            <button className="sheet-close" onClick={onClose} aria-label="Close">
+              ✕
+            </button>
+          </div>
+        )}
         <div className="sheet-body">{children}</div>
       </div>
     </div>

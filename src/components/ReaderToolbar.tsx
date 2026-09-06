@@ -1,23 +1,48 @@
+import { useEffect, useRef, useState } from 'react';
 import { useReaderStore } from '@/store/readerStore';
 import './readertoolbar.css';
 
 /**
- * Floating glass toolbar over the PDF: zoom out / level / in / fit,
- * and a rotate button to read a book held sideways (landscape).
- * Where the browser allows it we also lock the screen orientation.
+ * Floating glass toolbar over the PDF: zoom out / level / in, a page-number
+ * field you can type into to jump, and a rotate button for reading sideways.
  */
 export function ReaderToolbar() {
   const zoom = useReaderStore((s) => s.zoom);
   const rotation = useReaderStore((s) => s.rotation);
+  const currentPage = useReaderStore((s) => s.currentPage);
+  const numPages = useReaderStore((s) => s.numPages);
   const nudgeZoom = useReaderStore((s) => s.nudgeZoom);
   const resetZoom = useReaderStore((s) => s.resetZoom);
+  const setPage = useReaderStore((s) => s.setPage);
   const rotate = useReaderStore((s) => s.rotate);
 
   const landscape = rotation === 90 || rotation === 270;
 
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(String(currentPage));
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing, currentPage]);
+
+  const commitPage = () => {
+    const n = parseInt(draft, 10);
+    if (!Number.isNaN(n) && n >= 1 && n <= numPages) {
+      setPage(n);
+      document
+        .querySelector(`.pdf-page[data-page="${n}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    setEditing(false);
+  };
+
   const onRotate = async () => {
     rotate(1);
-    // best-effort native orientation lock (Android/Chrome installed PWA)
     const so = screen.orientation as ScreenOrientation & {
       lock?: (o: string) => Promise<void>;
       unlock?: () => void;
@@ -26,7 +51,7 @@ export function ReaderToolbar() {
       if (!landscape) await so.lock?.('landscape');
       else so.unlock?.();
     } catch {
-      /* not permitted / unsupported — CSS rotation still applies */
+      /* unsupported — CSS rotation still applies */
     }
   };
 
@@ -41,6 +66,37 @@ export function ReaderToolbar() {
       <button className="rtb-btn" onClick={() => nudgeZoom(0.15)} aria-label="Zoom in">
         +
       </button>
+
+      <span className="rtb-sep" />
+
+      {editing ? (
+        <span className="rtb-page-edit">
+          <input
+            ref={inputRef}
+            className="rtb-page-input"
+            type="text"
+            inputMode="numeric"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+            onBlur={commitPage}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitPage();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+          />
+          <span className="rtb-page-total">/&nbsp;{numPages}</span>
+        </span>
+      ) : (
+        <button
+          className="rtb-btn rtb-page"
+          onClick={() => setEditing(true)}
+          aria-label="Go to page"
+          disabled={!numPages}
+        >
+          {currentPage}
+          <span className="rtb-page-total">/&nbsp;{numPages || '—'}</span>
+        </button>
+      )}
 
       <span className="rtb-sep" />
 

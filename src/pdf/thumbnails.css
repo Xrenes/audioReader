@@ -1,13 +1,15 @@
 .thumbs {
   display: flex;
-  gap: 8px;
-  padding: 8px;
+  gap: 6px;
+  padding: 6px;
 }
 .thumbs-vertical {
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
   align-items: center;
+  gap: 6px;
+  padding: 4px;
 }
 .thumbs-horizontal {
   flex-direction: row;
@@ -38,11 +40,12 @@
 .thumb {
   position: relative;
   flex-shrink: 0;
-  border-radius: 8px;
-  padding: 3px;
+  border-radius: 6px;
+  padding: 2px;
   border: 1.5px solid transparent;
-  transition: border-color var(--dur-fast), transform var(--dur-fast);
-  background: var(--glass-highlight);
+  transition:
+    border-color var(--dur-fast),
+    transform var(--dur-fast);
 }
 .thumb.active {
   border-color: var(--accent);
@@ -52,9 +55,9 @@
 }
 
 .thumb-canvas-wrap {
-  width: 104px;
+  width: 92px;
   aspect-ratio: 3 / 4;
-  border-radius: 5px;
+  border-radius: 4px;
   overflow: hidden;
   background: var(--pdf-paper);
   display: grid;

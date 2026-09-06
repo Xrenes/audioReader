@@ -2,8 +2,6 @@
   flex: 1;
   overflow-y: auto;
   padding: calc(var(--safe-top) + 24px) 18px calc(var(--safe-bottom) + 32px);
-  max-width: 640px;
-  margin: 0 auto;
   width: 100%;
 }
 
