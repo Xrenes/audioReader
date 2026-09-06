@@ -3,32 +3,58 @@ import { useReaderStore } from '@/store/readerStore';
 import { useVoiceStore, type VoiceSlot } from '@/store/voiceStore';
 import { voiceManager } from '@/tts/voiceManager';
 import { BrowserSpeaker } from '@/audio/browserSpeaker';
+import {
+  getAzureCreds,
+  setAzureCreds,
+  getElevenLabsCreds,
+  setElevenLabsCreds,
+  getXttsUrl,
+  setXttsUrl,
+} from '@/config/credentials';
+import { xttsEngine } from '@/tts/xttsEngine';
 import { Field, Segmented, Slider, Toggle, Select } from './controls';
 import './voicesettings.css';
 
-const NAMED = voiceManager.list(); // [{ id: 'ahmed', displayName: 'Ahmed' }, ...]
+const NAMED = voiceManager.list();
 const nameOf = (id: string) => NAMED.find((n) => n.id === id)?.displayName ?? id;
 
 /**
- * The right panel. Same component before and during reading — every control
- * is live. Changing a voice or speed applies from the next sentence.
+ * The Settings panel. Simple controls up top (voice, speed, language, scope,
+ * ambient); anything fiddly — device-voice picker, API keys, XTTS URL —
+ * lives in a collapsed "Advanced" section at the bottom.
  */
 export function VoiceSettings() {
   const v = useVoiceStore();
   const selectionText = useReaderStore((s) => s.selectionText);
-  const readingMode = useReaderStore((s) => s.readingMode);
+  const pdfTheme = useReaderStore((s) => s.pdfTheme);
+  const togglePdfTheme = useReaderStore((s) => s.togglePdfTheme);
 
   return (
     <div className="vs">
       {selectionText && (
         <section className="vs-section">
           <h3>Selected passage</h3>
-          <p className="vs-passage">{selectionText.slice(0, 320)}{selectionText.length > 320 ? '…' : ''}</p>
+          <p className="vs-passage">
+            {selectionText.slice(0, 260)}
+            {selectionText.length > 260 ? '…' : ''}
+          </p>
         </section>
       )}
 
       <section className="vs-section">
-        <h3>Who reads now</h3>
+        <h3>Page</h3>
+        <Segmented
+          value={pdfTheme}
+          onChange={(t) => t !== pdfTheme && togglePdfTheme()}
+          options={[
+            { value: 'light', label: '☀ Bright' },
+            { value: 'dark', label: '☾ Dark' },
+          ]}
+        />
+      </section>
+
+      <section className="vs-section">
+        <h3>Who reads</h3>
         <Segmented<VoiceSlot>
           value={v.activeSlot}
           onChange={v.setActiveSlot}
@@ -48,8 +74,6 @@ export function VoiceSettings() {
 
       <VoicePane slot="A" />
       <VoicePane slot="B" />
-
-      <DeviceVoicePicker />
 
       <section className="vs-section">
         <h3>Language</h3>
@@ -89,16 +113,6 @@ export function VoiceSettings() {
             format={(n) => `${n}ms`}
           />
         </Field>
-        <Field label="Crossfade" hint={`${v.crossfadeMs} ms`}>
-          <Slider
-            min={0}
-            max={400}
-            step={10}
-            value={v.crossfadeMs}
-            onChange={(crossfadeMs) => v.patch({ crossfadeMs })}
-            format={(n) => `${n}ms`}
-          />
-        </Field>
         <Field label="Ambient bed">
           <Select
             value={v.ambientBed}
@@ -124,9 +138,7 @@ export function VoiceSettings() {
         )}
       </section>
 
-      {!readingMode && (
-        <p className="vs-note">These settings stay editable while reading.</p>
-      )}
+      <AdvancedSection />
     </div>
   );
 }
@@ -139,7 +151,7 @@ function VoicePane({ slot }: { slot: VoiceSlot }) {
   return (
     <section className={`vs-section vs-voice vs-voice-${slot.toLowerCase()}`}>
       <h3>
-        <span className="vs-dot" /> Slot {slot}
+        <span className="vs-dot" /> {nameOf(cfg.namedVoiceId)}
       </h3>
 
       <Field label="Voice">
@@ -149,8 +161,6 @@ function VoicePane({ slot }: { slot: VoiceSlot }) {
           options={NAMED.map((n) => ({ value: n.id, label: n.displayName }))}
         />
       </Field>
-
-      <p className="vs-voice-src">{voiceManager.describe(cfg.namedVoiceId)}</p>
 
       <Field label="Speed" hint={`${cfg.rate.toFixed(2)}×`}>
         <Slider
@@ -177,11 +187,28 @@ function VoicePane({ slot }: { slot: VoiceSlot }) {
   );
 }
 
-/**
- * Which system voice the device-voice fallback should use. Only relevant
- * when no neural engine is configured — but that's exactly when it matters
- * for "less robotic". Voices are ranked best-first; "Preview" speaks a line.
- */
+/* ---------------------------------------------------------------------------
+   Advanced — device-voice picker + neural engine credentials, collapsed.
+   --------------------------------------------------------------------------- */
+
+function AdvancedSection() {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="vs-section vs-advanced">
+      <button className="vs-advanced-toggle" onClick={() => setOpen((o) => !o)}>
+        <span>Advanced — voice engines</span>
+        <span className={`vs-chev${open ? ' open' : ''}`}>⌄</span>
+      </button>
+      {open && (
+        <div className="vs-advanced-body">
+          <DeviceVoicePicker />
+          <EngineCreds />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DeviceVoicePicker() {
   const deviceVoiceUri = useVoiceStore((s) => s.deviceVoiceUri);
   const setDeviceVoice = useVoiceStore((s) => s.setDeviceVoice);
@@ -196,11 +223,11 @@ function DeviceVoicePicker() {
 
   const preview = (uri: string | null, lang: 'en' | 'bn') => {
     const list = lang === 'bn' ? bnVoices : enVoices;
-    const v = uri ? list.find((x) => x.voiceURI === uri) : list[0];
+    const voice = uri ? list.find((x) => x.voiceURI === uri) : list[0];
     const u = new SpeechSynthesisUtterance(
       lang === 'bn' ? 'এটি একটি নমুনা পাঠ।' : 'The quiet library at dusk. She began to read.',
     );
-    if (v) u.voice = v;
+    if (voice) u.voice = voice;
     u.rate = 0.9;
     u.pitch = 0.83;
     speechSynthesis.cancel();
@@ -217,7 +244,7 @@ function DeviceVoicePicker() {
             value={deviceVoiceUri[lang] ?? '__auto'}
             onChange={(uri) => setDeviceVoice(lang, uri === '__auto' ? null : uri)}
             options={[
-              { value: '__auto', label: `Auto — best available (${list[0]?.name ?? '—'})` },
+              { value: '__auto', label: `Auto — best (${list[0]?.name ?? '—'})` },
               ...list.map((x) => ({
                 value: x.voiceURI,
                 label: `${x.name}${x.localService ? '' : ' · online'}`,
@@ -236,13 +263,93 @@ function DeviceVoicePicker() {
     ) : null;
 
   return (
-    <section className="vs-section">
-      <h3>Device voice</h3>
-      <p className="vs-voice-src">
-        Used only when no neural engine is set. Online / “Natural” voices sound best.
-      </p>
+    <div className="vs-adv-block">
+      <h4>Device voice</h4>
+      <p className="vs-adv-hint">Used when no neural engine is set. Online voices sound best.</p>
       {row('en', enVoices)}
       {row('bn', bnVoices)}
-    </section>
+    </div>
+  );
+}
+
+function EngineCreds() {
+  const [azKey, setAzKey] = useState('');
+  const [region, setRegion] = useState('southeastasia');
+  const [elKey, setElKey] = useState('');
+  const [xUrl, setXUrl] = useState('http://localhost:8020');
+  const [xStatus, setXStatus] = useState<'idle' | 'checking' | 'up' | 'down'>('idle');
+
+  useEffect(() => {
+    getAzureCreds().then((c) => {
+      if (c) {
+        setAzKey(c.key);
+        setRegion(c.region);
+      }
+    });
+    getElevenLabsCreds().then((c) => c && setElKey(c.key));
+    getXttsUrl().then((u) => setXUrl(u || ''));
+  }, []);
+
+  const checkXtts = async () => {
+    setXStatus('checking');
+    setXStatus((await xttsEngine.available()) ? 'up' : 'down');
+  };
+
+  return (
+    <div className="vs-adv-block">
+      <h4>Neural engines</h4>
+      <p className="vs-adv-hint">
+        Optional. Keys are stored only on this device. Without one, the device voice is used.
+      </p>
+
+      <label className="vs-adv-label">ElevenLabs — English</label>
+      <input
+        className="vs-adv-input"
+        type="password"
+        placeholder="API key"
+        value={elKey}
+        onChange={(e) => setElKey(e.target.value)}
+        onBlur={() => setElevenLabsCreds(elKey ? { key: elKey } : null)}
+      />
+
+      <label className="vs-adv-label">Azure Speech — Bangla</label>
+      <input
+        className="vs-adv-input"
+        type="password"
+        placeholder="Speech key"
+        value={azKey}
+        onChange={(e) => setAzKey(e.target.value)}
+        onBlur={() => setAzureCreds(azKey ? { key: azKey, region } : null)}
+      />
+      <input
+        className="vs-adv-input"
+        type="text"
+        placeholder="Region (e.g. southeastasia)"
+        value={region}
+        onChange={(e) => setRegion(e.target.value)}
+        onBlur={() => setAzureCreds(azKey ? { key: azKey, region } : null)}
+      />
+
+      <label className="vs-adv-label">My Voice — local XTTS server</label>
+      <input
+        className="vs-adv-input"
+        type="text"
+        placeholder="http://localhost:8020"
+        value={xUrl}
+        onChange={(e) => setXUrl(e.target.value)}
+        onBlur={async () => {
+          await setXttsUrl(xUrl.trim() || null);
+          void checkXtts();
+        }}
+      />
+      <div className="vs-adv-xtts">
+        <button className="vs-adv-check" onClick={checkXtts} disabled={xStatus === 'checking'}>
+          {xStatus === 'checking' ? 'Checking…' : 'Test'}
+        </button>
+        <span className={`vs-adv-badge${xStatus === 'up' ? ' ok' : ''}`} data-down={xStatus === 'down'}>
+          {xStatus === 'up' ? 'Connected' : xStatus === 'down' ? 'Not reachable' : 'Not checked'}
+        </span>
+      </div>
+    </div>
   );
 }

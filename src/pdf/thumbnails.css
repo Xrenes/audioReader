@@ -14,6 +14,19 @@
   overflow-x: auto;
   padding: 4px 8px 12px;
 }
+.thumbs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+  padding: 4px 2px 16px;
+  align-content: start;
+}
+.thumbs-grid .thumb {
+  width: 100%;
+}
+.thumbs-grid .thumb-canvas-wrap {
+  width: 100%;
+}
 
 .thumbs-empty,
 .thumb-canvas-wrap:empty {

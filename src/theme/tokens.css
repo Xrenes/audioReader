@@ -47,7 +47,6 @@
   --pdf-ink: #1a1a1a;
 
   /* --- layout --- */
-  --topbar-h: 52px;
   --audiobar-h: 96px;
   --rail-w: 300px;
   --safe-top: env(safe-area-inset-top, 0px);

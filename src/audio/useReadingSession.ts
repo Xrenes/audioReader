@@ -358,21 +358,34 @@ export function useReadingSession() {
 
   const skip = useCallback(
     (sec: number) => {
-      if (!onFallback.current) getPlayer().skip(sec);
+      if (onFallback.current) getSpeaker().seekBySeconds(sec);
+      else getPlayer().skip(sec);
     },
-    [getPlayer],
+    [getPlayer, getSpeaker],
   );
   const seek = useCallback(
     (sec: number) => {
-      if (!onFallback.current) getPlayer().seek(sec);
+      if (onFallback.current) getSpeaker().seekToSeconds(sec);
+      else getPlayer().seek(sec);
     },
-    [getPlayer],
+    [getPlayer, getSpeaker],
   );
   const seekChunk = useCallback(
     (dir: -1 | 1) => {
-      if (!onFallback.current) getPlayer().seekChunk(dir);
+      if (onFallback.current) getSpeaker().skipSentence(dir);
+      else getPlayer().seekChunk(dir);
     },
-    [getPlayer],
+    [getPlayer, getSpeaker],
+  );
+
+  /** Speed changed while playing — make it take effect now. */
+  const applySpeed = useCallback(
+    (rate: number, pitch: number) => {
+      setBrowserSpeakerParams(rate, pitch);
+      if (onFallback.current) getSpeaker().applyRate();
+      // (neural path applies rate on the next chunk; live re-pitch would need re-synth)
+    },
+    [getSpeaker],
   );
 
   /** Re-synth the not-yet-played chunks with whatever voice settings are current. */
@@ -386,7 +399,7 @@ export function useReadingSession() {
     p.seek(pos);
   }, [getPlayer, start]);
 
-  return { start, toggle, pause, resume, skip, seek, seekChunk, applyVoiceChangeFromHere };
+  return { start, toggle, pause, resume, skip, seek, seekChunk, applySpeed, applyVoiceChangeFromHere };
 }
 
 function other(s: VoiceSlot): VoiceSlot {

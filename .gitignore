@@ -19,3 +19,4 @@ xtts-finetune/dataset/*.csv
 xtts-finetune/output/
 vite.config.d.ts
 vite.config.js
+tsconfig.tsbuildinfo

@@ -1,0 +1,62 @@
+.fctl {
+  position: fixed;
+  top: calc(var(--safe-top) + 8px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px;
+  pointer-events: none;
+  transition:
+    opacity var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.fctl.idle {
+  opacity: 0.35;
+  transform: scale(0.92);
+}
+
+.fctl-group {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.fctl-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  color: var(--text-secondary);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-bar);
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast),
+    transform var(--dur-fast);
+}
+.fctl-btn:active {
+  transform: scale(0.9);
+}
+.fctl-btn.on {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+@media (min-width: 900px) {
+  .fctl {
+    top: 14px;
+    padding: 0 16px;
+  }
+  .fctl-btn {
+    width: 42px;
+    height: 42px;
+  }
+}

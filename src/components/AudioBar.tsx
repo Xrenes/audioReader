@@ -17,7 +17,7 @@ const fmt = (s: number) => {
  * safe-area. Tap the body to expand to the full-screen player.
  */
 export function AudioBar() {
-  const { toggle, skip, seek, seekChunk } = useReadingSession();
+  const { toggle, skip, seek, seekChunk, applySpeed } = useReadingSession();
 
   const status = usePlayerStore((s) => s.status);
   const position = usePlayerStore((s) => s.position);
@@ -31,6 +31,7 @@ export function AudioBar() {
   const activeSlot = useVoiceStore((s) => s.activeSlot);
   const setActiveSlot = useVoiceStore((s) => s.setActiveSlot);
   const rate = useVoiceStore((s) => s.voices[activeSlot].rate);
+  const pitch = useVoiceStore((s) => s.voices[activeSlot].pitch);
   const setActiveRate = useVoiceStore((s) => s.setActiveRate);
   const nameA = useVoiceStore((s) => s.voices.A.namedVoiceId);
   const nameB = useVoiceStore((s) => s.voices.B.namedVoiceId);
@@ -122,7 +123,10 @@ export function AudioBar() {
                 <button
                   key={v}
                   className={`spd${Math.abs(rate - v) < 0.03 ? ' on' : ''}`}
-                  onClick={() => setActiveRate(v)}
+                  onClick={() => {
+                    setActiveRate(v);
+                    applySpeed(v, pitch);
+                  }}
                 >
                   {v === 1 ? '1×' : `${v.toFixed(2).replace(/0$/, '')}×`}
                 </button>

@@ -9,7 +9,11 @@ import './thumbnails.css';
  * Scrolls in sync with the main view: the active page auto-centers here,
  * and tapping a thumbnail jumps the main view via a shared scroll intent.
  */
-export function Thumbnails({ orientation = 'vertical' }: { orientation?: 'vertical' | 'horizontal' }) {
+export function Thumbnails({
+  orientation = 'vertical',
+}: {
+  orientation?: 'vertical' | 'horizontal' | 'grid';
+}) {
   const docId = useReaderStore((s) => s.docId);
   const currentPage = useReaderStore((s) => s.currentPage);
   const setPage = useReaderStore((s) => s.setPage);

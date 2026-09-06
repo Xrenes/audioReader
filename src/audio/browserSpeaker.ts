@@ -36,7 +36,7 @@ interface Unit {
 
 const WPM = 150; // calm reading pace, for the position estimate
 
-/** rank a voice: higher = more natural-sounding */
+/** rank a voice: higher = more natural-sounding / preferred */
 function voiceScore(v: SpeechSynthesisVoice): number {
   const n = `${v.name} ${v.voiceURI}`.toLowerCase();
   let s = 0;
@@ -45,7 +45,9 @@ function voiceScore(v: SpeechSynthesisVoice): number {
   if (/google/.test(n)) s += 30;
   if (/microsoft/.test(n) && /online|natural/.test(n)) s += 25;
   if (/premium|enhanced|siri/.test(n)) s += 20;
-  if (/zira|david|mark|hazel/.test(n)) s -= 10; // the classic robotic set
+  // "Mark" is the least grating of the classic Windows set — prefer it
+  if (/\bmark\b/.test(n)) s += 15;
+  else if (/zira|david|hazel/.test(n)) s -= 10;
   if (/espeak|festival/.test(n)) s -= 50;
   return s;
 }
@@ -85,6 +87,7 @@ export class BrowserSpeaker {
   private estTotal = 0;
   private raf = 0;
   private gapTimer = 0;
+  private epoch = 0; // bumped on any jump/rate-change to cancel stale callbacks
   private voices: SpeechSynthesisVoice[] = [];
   private forcedVoiceURI: string | null = null;
 
@@ -149,12 +152,9 @@ export class BrowserSpeaker {
   async play() {
     if (this.playing || !this.units.length) return;
     this.voices = await BrowserSpeaker.voices();
-    if (!this.voices.length) {
-      this.cb.onError?.(
-        'This browser has no speech voices installed, so it can’t speak. On Windows: Settings → Time & language → Speech → add voices. Or add an Azure/ElevenLabs key in settings for a natural voice.',
-      );
-      return;
-    }
+    // Some platforms report an empty voice list but still speak with a system
+    // default. Try anyway; only surface the "no voices" error if the very
+    // first utterance actually errors out (handled in speakFrom).
     this.playing = true;
     this.startedAt = performance.now();
     this.tick();
@@ -187,6 +187,92 @@ export class BrowserSpeaker {
     if (!this.playing) return;
     this.synth.resume();
     if (!this.synth.speaking && !this.synth.pending) this.speakFrom(this.idx);
+  }
+
+  /** Jump to a unit index and start speaking from there. */
+  jumpToUnit(i: number) {
+    const target = Math.max(0, Math.min(this.units.length - 1, i));
+    window.clearTimeout(this.gapTimer);
+    this.epoch++; // invalidate any in-flight onend/gapTimer callbacks
+    this.synth.cancel();
+    this.idx = target;
+    this.elapsedBefore = this.secsBeforeUnit(target);
+    this.startedAt = performance.now();
+    this.cb.onProgress?.(this.elapsedBefore, this.estTotal);
+    this.cb.onChunk?.(this.units[target]?.chunkId ?? '', target);
+    if (this.playing) {
+      // Chrome swallows speak() fired in the same tick as cancel() — defer.
+      const myEpoch = this.epoch;
+      window.setTimeout(() => {
+        if (this.playing && this.epoch === myEpoch) this.speakFrom(target);
+      }, 60);
+    }
+  }
+
+  /** Skip whole sentences (prev/next). Lands on the start of a sentence. */
+  skipSentence(dir: -1 | 1) {
+    const cur = this.idx;
+    if (dir === 1) {
+      // next sentence start = first unit after the next sentence-ending unit
+      let i = cur;
+      while (i < this.units.length && !this.endsSentence(i)) i++;
+      this.jumpToUnit(Math.min(this.units.length - 1, i + 1));
+    } else {
+      // start of the current sentence, or the previous one if already there
+      let i = cur - 1;
+      while (i > 0 && !this.endsSentence(i - 1)) i--;
+      // if we're basically at a sentence start already, go back one more
+      if (i === cur - 1 && (cur === 0 || this.endsSentence(cur - 1))) {
+        let j = i - 1;
+        while (j > 0 && !this.endsSentence(j - 1)) j--;
+        i = Math.max(0, j);
+      }
+      this.jumpToUnit(Math.max(0, i));
+    }
+  }
+
+  /** Relative seek by seconds — approximate, maps to the nearest unit. */
+  seekBySeconds(delta: number) {
+    const targetSec = Math.max(0, Math.min(this.estTotal, this.positionSec() + delta));
+    let acc = 0;
+    let i = 0;
+    for (; i < this.units.length; i++) {
+      const dur = this.unitSecs(i);
+      if (acc + dur >= targetSec) break;
+      acc += dur;
+    }
+    this.jumpToUnit(Math.min(this.units.length - 1, i));
+  }
+
+  /** Absolute seek by seconds (scrubber). */
+  seekToSeconds(sec: number) {
+    this.seekBySeconds(sec - this.positionSec());
+  }
+
+  /** Speed changed mid-sentence — restart the current unit at the new rate. */
+  applyRate() {
+    if (!this.playing) return;
+    // just re-jump to the current unit; jumpToUnit handles cancel + deferred speak
+    this.jumpToUnit(this.idx);
+  }
+
+  positionSec() {
+    if (!this.playing) return this.elapsedBefore;
+    return Math.min(this.estTotal, this.elapsedBefore + (performance.now() - this.startedAt) / 1000);
+  }
+
+  private endsSentence(i: number) {
+    return /[.!?…।]$/.test(this.units[i]?.text ?? '');
+  }
+  private unitSecs(i: number) {
+    const u = this.units[i];
+    if (!u) return 0;
+    return (u.text.split(/\s+/).length / WPM) * 60 + u.gapMs / 1000;
+  }
+  private secsBeforeUnit(i: number) {
+    let acc = 0;
+    for (let k = 0; k < i; k++) acc += this.unitSecs(k);
+    return acc;
   }
 
   toggle() {
@@ -233,7 +319,11 @@ export class BrowserSpeaker {
     const su = new SpeechSynthesisUtterance(u.text);
     const chunkLang: 'en' | 'bn' = /[ঀ-৿]/.test(u.text) ? 'bn' : 'en';
     const picked = this.pickVoice(chunkLang);
-    if (picked) su.voice = picked;
+    try {
+      if (picked) su.voice = picked;
+    } catch {
+      /* stale voice ref — fall back to the platform default */
+    }
     su.lang = picked?.lang ?? (chunkLang === 'bn' ? 'bn-BD' : 'en-US');
 
     // pull the live user speed each unit so the player slider is responsive
@@ -241,24 +331,31 @@ export class BrowserSpeaker {
     su.rate = rate;
     su.pitch = clamp(1 + currentPitch() / 12, 0, 2);
 
+    const myEpoch = this.epoch;
     su.onend = () => {
-      if (!this.playing) return;
-      // natural gap, scaled down a little as the user speeds up
+      if (!this.playing || this.epoch !== myEpoch) return;
       const gap = u.gapMs / Math.max(0.8, rate);
-      this.gapTimer = window.setTimeout(() => this.speakFrom(i + 1), gap);
+      this.gapTimer = window.setTimeout(() => {
+        if (this.playing && this.epoch === myEpoch) this.speakFrom(i + 1);
+      }, gap);
     };
     su.onerror = (e) => {
-      if (e.error !== 'interrupted' && e.error !== 'canceled') {
-        this.cb.onError?.(`Device voice error: ${e.error}`);
+      if (e.error === 'interrupted' || e.error === 'canceled') return;
+      if ((e.error === 'not-allowed' || e.error === 'synthesis-failed') && i === 0) {
+        this.playing = false;
+        this.cb.onError?.(
+          'This browser can’t speak (no voices available). On Windows: Settings → Time & language → Speech → add voices. Or add an Azure/ElevenLabs key for a natural voice.',
+        );
+        return;
       }
+      this.cb.onError?.(`Device voice error: ${e.error}`);
     };
     this.synth.speak(su);
   }
 
   private tick = () => {
     if (!this.playing) return;
-    const now = this.elapsedBefore + (performance.now() - this.startedAt) / 1000;
-    this.cb.onProgress?.(Math.min(now, this.estTotal), this.estTotal);
+    this.cb.onProgress?.(this.positionSec(), this.estTotal);
     this.raf = requestAnimationFrame(this.tick);
   };
 }

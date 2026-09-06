@@ -37,8 +37,6 @@ interface VoiceState {
   ambientBed: 'off' | 'rain' | 'brown';
   ambientLevel: number;
 
-  configured: boolean;
-
   // --- actions ---
   setSlotVoice: (slot: VoiceSlot, namedVoiceId: string) => void;
   setSlotParam: (slot: VoiceSlot, patch: Partial<Pick<SlotConfig, 'rate' | 'pitch'>>) => void;
@@ -50,7 +48,6 @@ interface VoiceState {
   setScope: (s: ReadingScope) => void;
   setDeviceVoice: (lang: Lang, uri: string | null) => void;
   patch: (p: Partial<VoiceState>) => void;
-  markConfigured: () => void;
 }
 
 const slots = voiceManager.defaultSlotIds();
@@ -73,7 +70,6 @@ export const useVoiceStore = create<VoiceState>()(
       fadeEdgesMs: 180,
       ambientBed: 'off',
       ambientLevel: 0.1,
-      configured: false,
 
       setSlotVoice: (slot, namedVoiceId) =>
         set((s) => ({ voices: { ...s.voices, [slot]: { ...s.voices[slot], namedVoiceId } } })),
@@ -93,7 +89,6 @@ export const useVoiceStore = create<VoiceState>()(
       setDeviceVoice: (lang, uri) =>
         set((s) => ({ deviceVoiceUri: { ...s.deviceVoiceUri, [lang]: uri } })),
       patch: (p) => set(p),
-      markConfigured: () => set({ configured: true }),
     }),
     { name: 'audio-reader.voice', version: 3 },
   ),
