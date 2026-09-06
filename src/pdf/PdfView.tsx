@@ -5,7 +5,6 @@ import { useReaderStore } from '@/store/readerStore';
 import { loadPdf } from '@/storage/db';
 import { extractSelection, extractRange, MAX_RANGE_PAGES } from './extractText';
 import { SelectionOverlay } from './SelectionOverlay';
-import { ReaderToolbar } from '@/components/ReaderToolbar';
 import { PdfState } from '@/components/PdfState';
 import { usePinchZoom } from './usePinchZoom';
 import { anyVoiceAvailable } from '@/tts/availability';
@@ -48,7 +47,7 @@ export function PdfView() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pageEls = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  usePinchZoom(scrollRef);
+  usePinchZoom(scrollRef, loadState);
 
   const load = useCallback(async () => {
     if (!docId) return;
@@ -142,7 +141,6 @@ export function PdfView() {
 
   return (
     <div className="pdf-viewport">
-      <ReaderToolbar />
 
       {loadState === 'loading' && <PdfState kind="loading" />}
       {loadState === 'error' && <PdfState kind="error" detail={errMsg} onRetry={load} />}

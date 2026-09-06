@@ -21,7 +21,7 @@
   gap: 14px;
   /* room for the floating controls at the top, none needed at the bottom
      (the audio bar sits over its own space) */
-  padding: calc(var(--safe-top) + 104px) 8px 16px;
+  padding: calc(var(--safe-top) + 58px) 8px 16px;
   scroll-behavior: smooth;
 }
 
@@ -70,7 +70,9 @@
   position: absolute;
   inset: 0;
   z-index: 4;
-  touch-action: pan-y;
+  /* allow the browser to pan AND pinch-zoom; we only handle single-finger
+     drags / holds and bail on multi-touch */
+  touch-action: pan-x pan-y pinch-zoom;
   cursor: crosshair;
 }
 

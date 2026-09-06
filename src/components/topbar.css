@@ -1,82 +1,79 @@
-.rtoolbar {
+.topbar {
   position: absolute;
-  z-index: 20;
-  top: calc(var(--safe-top) + 60px); /* clear the floating button row + a gap */
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(var(--safe-top) + 8px);
+  left: 8px;
+  right: 8px;
+  z-index: 70; /* above the sheet scrim so its buttons stay tappable */
   display: flex;
   align-items: center;
   gap: 1px;
   padding: 3px 4px;
   border-radius: var(--radius-pill);
-  max-width: calc(100% - 24px);
+  box-shadow: var(--shadow-bar);
 }
 
-.rtb-btn {
-  min-width: 32px;
-  height: 32px;
-  padding: 0 7px;
+.tb-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 6px;
   border-radius: var(--radius-pill);
   display: grid;
   place-items: center;
-  font-size: 16px;
+  font-size: 17px;
   color: var(--text-secondary);
+  flex-shrink: 0;
   transition:
     background var(--dur-fast),
-    color var(--dur-fast);
+    color var(--dur-fast),
+    transform var(--dur-fast);
 }
-.rtb-btn:active {
+.tb-btn:active {
   background: var(--glass-highlight);
   color: var(--text-primary);
+  transform: scale(0.92);
 }
-.rtb-btn:disabled {
+.tb-btn:disabled {
   opacity: 0.4;
 }
-
-.rtb-level {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  min-width: 42px;
-  color: var(--text-tertiary);
+.tb-btn.on {
+  background: var(--accent);
+  color: #06121f;
 }
 
-.rtb-sep {
+.tb-sep {
   width: 1px;
   height: 18px;
   background: var(--glass-border);
   margin: 0 3px;
   flex-shrink: 0;
 }
+.tb-spacer {
+  flex: 1;
+}
 
-/* page number / jump field */
-.rtb-page {
+.tb-page {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 3px;
-  height: 32px;
+  gap: 2px;
   font-size: 12px;
-  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   white-space: nowrap;
-  min-width: 46px;
-  padding: 0 8px;
+  min-width: 40px;
 }
-.rtb-page-total {
+.tb-page-total {
   color: var(--text-tertiary);
-  font-size: 11px;
-  white-space: nowrap;
+  font-size: 10.5px;
 }
-.rtb-page-edit {
+.tb-page-edit {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 6px;
+  gap: 3px;
+  padding: 0 4px;
   white-space: nowrap;
 }
-.rtb-page-input {
-  width: 32px;
+.tb-page-input {
+  width: 30px;
   height: 26px;
   text-align: center;
   border-radius: var(--radius-sm);
@@ -88,7 +85,7 @@
   outline: none;
 }
 
-.rtb-rotate.on {
+.tb-rotate.on {
   background: var(--accent-dim);
   color: var(--accent);
 }

@@ -13,28 +13,30 @@ interface Props {
 type Box = { x0: number; y0: number; x1: number; y1: number };
 type Handle = 'tl' | 'br' | null;
 
-const HOLD_MS = 550;
-const DRAG_START = 8; // px of travel before we treat the gesture as a box-drag
+const HOLD_MS = 2000; // press-and-hold to arm range mode
+const DRAG_START = 8; // px of travel before a plain drag becomes a box
+const DBL_MS = 320; // double-tap window
+const DBL_SLOP = 24; // px between the two taps of a double-tap
 
 /**
- * One overlay, two ways to pick a passage:
- *  - **drag** a box on a page  → single-region selection (handles + "Read this")
- *  - **press & hold** (~550ms, finger still) → drop a range marker; hold again
- *    elsewhere (even another page) for the end. PdfView shows "Read aloud".
+ * Passage selection on touch:
+ *  - **quick drag** → box (single region, "Read this")
+ *  - **hold 2s (finger still) → then drag** → sweep a range across the page
+ *  - **double-tap a word** → set range start / end (works across pages)
+ *  - **double-tap a blank area** → play / pause
  *
- * We do NOT capture the pointer until the gesture is clearly a drag, so a
- * plain touch still scrolls the page normally.
+ * Any touch with two or more fingers is ignored so pinch-zoom works.
  */
 export function SelectionOverlay({ pageNumber, onSelect }: Props) {
   const layerRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState<Box | null>(null);
 
-  // gesture state
   const down = useRef<{ x: number; y: number; nx: number; ny: number; id: number } | null>(null);
-  const mode = useRef<'idle' | 'draw' | 'resize'>('idle');
+  const mode = useRef<'idle' | 'draw' | 'resize' | 'range'>('idle');
   const resizeHandle = useRef<Handle>(null);
   const holdTimer = useRef<number>(0);
-  const holdFired = useRef(false);
+  const armed = useRef(false); // range mode armed by the 2s hold
+  const lastTap = useRef<{ t: number; x: number; y: number }>({ t: 0, x: 0, y: 0 });
 
   const selection = useReaderStore((s) => s.selection);
   const rangeStart = useReaderStore((s) => s.rangeStart);
@@ -44,6 +46,9 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
   const setRangeEnd = useReaderStore((s) => s.setRangeEnd);
   const requestPlay = useReaderStore((s) => s.requestPlay);
   const committed = selection?.page === pageNumber ? selection : null;
+
+  const status = usePlayerStore((s) => s.status);
+  const busy = status === 'playing' || status === 'loading';
 
   const [voiceReady, setVoiceReady] = useState(true);
   useEffect(() => {
@@ -58,10 +63,8 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
     };
   };
 
-  const commit = (b: Box) => {
-    const w = Math.abs(b.x1 - b.x0);
-    const h = Math.abs(b.y1 - b.y0);
-    if (w < 0.03 || h < 0.012) return;
+  const commitBox = (b: Box) => {
+    if (Math.abs(b.x1 - b.x0) < 0.03 || Math.abs(b.y1 - b.y0) < 0.012) return;
     onSelect({
       page: pageNumber,
       x0: Math.min(b.x0, b.x1),
@@ -71,51 +74,70 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
     });
   };
 
+  const dropRangePoint = (nx: number, ny: number) => {
+    if (!rangeStart || (rangeStart && rangeEnd)) {
+      setRangeEnd(null);
+      setRangeStart({ page: pageNumber, x: nx, y: ny });
+    } else {
+      setRangeEnd({ page: pageNumber, x: nx, y: ny });
+    }
+  };
+
   const reset = () => {
     window.clearTimeout(holdTimer.current);
     down.current = null;
     mode.current = 'idle';
     resizeHandle.current = null;
+    armed.current = false;
     setBox(null);
   };
 
   const onPointerDown = (e: PointerEvent) => {
-    if (e.pointerType === 'touch' && !e.isPrimary) return;
+    // ignore multi-touch entirely — let the browser pinch-zoom
+    if (e.pointerType === 'touch' && !e.isPrimary) {
+      reset();
+      return;
+    }
     if ((e.target as HTMLElement).closest('.pdf-select-handle, .pdf-select-chip')) return;
+
     const n = norm(e.clientX, e.clientY);
     down.current = { x: e.clientX, y: e.clientY, nx: n.x, ny: n.y, id: e.pointerId };
-    holdFired.current = false;
     mode.current = 'idle';
+    armed.current = false;
 
-    // arm hold-to-mark only when there's no active box selection
     if (!selection) {
+      // 2s hold → arm range mode (finger stays down; a later drag sweeps it)
       holdTimer.current = window.setTimeout(() => {
         if (!down.current) return;
-        holdFired.current = true;
-        if (navigator.vibrate) navigator.vibrate(8);
+        armed.current = true;
+        if (navigator.vibrate) navigator.vibrate([10, 40, 10]);
+        (e.target as HTMLElement).setPointerCapture?.(down.current.id);
+        // drop the start point right away; the drag will place the end
         const { nx, ny } = down.current;
-        if (!rangeStart || (rangeStart && rangeEnd)) {
-          setRangeEnd(null);
-          setRangeStart({ page: pageNumber, x: nx, y: ny });
-        } else {
-          setRangeEnd({ page: pageNumber, x: nx, y: ny });
-        }
-        down.current = null; // consumed; a following move won't draw a box
+        setRangeStart({ page: pageNumber, x: nx, y: ny });
+        setRangeEnd(null);
       }, HOLD_MS);
     }
   };
 
   const onPointerMove = (e: PointerEvent) => {
-    if (!down.current || holdFired.current) return;
+    if (!down.current) return;
     const dx = e.clientX - down.current.x;
     const dy = e.clientY - down.current.y;
     const dist = Math.hypot(dx, dy);
     const p = norm(e.clientX, e.clientY);
 
+    if (armed.current) {
+      // range sweep — track the end point
+      mode.current = 'range';
+      setRangeEnd({ page: pageNumber, x: p.x, y: p.y });
+      e.preventDefault();
+      return;
+    }
+
     if (mode.current === 'idle') {
-      if (dist < DRAG_START) return; // still might be a hold — let the browser scroll
-      // it's a drag → cancel the hold, take over the gesture, start drawing
-      window.clearTimeout(holdTimer.current);
+      if (dist < DRAG_START) return; // maybe still a hold — don't hijack scroll
+      window.clearTimeout(holdTimer.current); // moved → not a hold
       (e.target as HTMLElement).setPointerCapture(down.current.id);
       mode.current = 'draw';
       setBox({ x0: down.current.nx, y0: down.current.ny, x1: p.x, y1: p.y });
@@ -137,16 +159,53 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: PointerEvent) => {
     window.clearTimeout(holdTimer.current);
-    if (holdFired.current) {
-      holdFired.current = false;
+
+    // range sweep finished
+    if (mode.current === 'range') {
+      reset();
+      return;
+    }
+    // armed but never dragged → the start point is already dropped; just end
+    if (armed.current) {
+      armed.current = false;
       down.current = null;
       mode.current = 'idle';
       return;
     }
-    if ((mode.current === 'draw' || mode.current === 'resize') && box) commit(box);
+
+    if ((mode.current === 'draw' || mode.current === 'resize') && box) {
+      commitBox(box);
+      reset();
+      return;
+    }
+
+    // no drag happened → treat as a tap; check for double-tap
+    const now = Date.now();
+    const prev = lastTap.current;
+    const near =
+      Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < DBL_SLOP && now - prev.t < DBL_MS;
+    if (near) {
+      lastTap.current = { t: 0, x: 0, y: 0 };
+      handleDoubleTap(e);
+    } else {
+      lastTap.current = { t: now, x: e.clientX, y: e.clientY };
+    }
     reset();
+  };
+
+  const handleDoubleTap = (e: PointerEvent) => {
+    // reading → double-tap anywhere toggles play/pause
+    if (busy || status === 'paused' || status === 'ended') {
+      window.dispatchEvent(new CustomEvent('audioreader:toggle'));
+      return;
+    }
+    // not reading, no box selection → double-tap sets a range point
+    if (!selection) {
+      const n = norm(e.clientX, e.clientY);
+      dropRangePoint(n.x, n.y);
+    }
   };
 
   const startResize = (which: Handle) => (e: PointerEvent) => {
@@ -158,15 +217,19 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
     if (committed) setBox({ x0: committed.x0, y0: committed.y0, x1: committed.x1, y1: committed.y1 });
   };
 
-  const status = usePlayerStore((s) => s.status);
-  const busy = status === 'playing' || status === 'loading';
-
   const render = box ?? committed;
   const dragging = mode.current === 'draw' || mode.current === 'resize';
   const showChrome = Boolean(committed) && !dragging && !busy;
 
   const startHere = rangeStart?.page === pageNumber ? rangeStart : null;
   const endHere = rangeEnd?.page === pageNumber ? rangeEnd : null;
+  const bandHere =
+    rangeStart && rangeEnd && rangeStart.page === pageNumber && rangeEnd.page === pageNumber
+      ? {
+          y0: Math.min(rangeStart.y, rangeEnd.y),
+          y1: Math.max(rangeStart.y, rangeEnd.y),
+        }
+      : null;
 
   return (
     <div
@@ -177,6 +240,15 @@ export function SelectionOverlay({ pageNumber, onSelect }: Props) {
       onPointerUp={onPointerUp}
       onPointerCancel={reset}
     >
+      {armed.current && !render && <div className="range-armed-hint">drag to sweep the range</div>}
+
+      {bandHere && (
+        <div
+          className="range-band"
+          style={{ top: `${bandHere.y0 * 100}%`, height: `${(bandHere.y1 - bandHere.y0) * 100}%` }}
+        />
+      )}
+
       {render && (
         <div
           className={`pdf-select-box${showChrome ? ' committed' : ''}${

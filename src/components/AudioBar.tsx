@@ -47,6 +47,13 @@ export function AudioBar() {
       void start();
     }
   }, [playRequest, start]);
+
+  // double-tap on the page (while reading) toggles play/pause
+  useEffect(() => {
+    const h = () => toggle();
+    window.addEventListener('audioreader:toggle', h);
+    return () => window.removeEventListener('audioreader:toggle', h);
+  }, [toggle]);
   const activeSlot = useVoiceStore((s) => s.activeSlot);
   const setActiveSlot = useVoiceStore((s) => s.setActiveSlot);
   const rate = useVoiceStore((s) => s.voices[activeSlot].rate);

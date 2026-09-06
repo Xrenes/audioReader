@@ -1,6 +1,6 @@
 import { useReaderStore } from '@/store/readerStore';
 import { PdfView } from '@/pdf/PdfView';
-import { FloatingControls } from './FloatingControls';
+import { TopBar } from './TopBar';
 import { GlassSheet } from './GlassSheet';
 import { Thumbnails } from '@/pdf/Thumbnails';
 import { VoiceSettings } from './VoiceSettings';
@@ -13,7 +13,7 @@ export function Reader() {
 
   return (
     <div className="reader">
-      <FloatingControls />
+      <TopBar />
 
       <div className="reader-body">
         <main className="reader-center">

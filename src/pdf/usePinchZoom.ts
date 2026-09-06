@@ -2,11 +2,12 @@ import { useEffect, type RefObject } from 'react';
 import { useReaderStore } from '@/store/readerStore';
 
 /**
- * Two-finger pinch-to-zoom on the scroll container, plus ctrl/⌘ + wheel on
- * desktop. Updates the store's `zoom`; page re-render handles the rest.
- * We keep the pinch focal point roughly stable by adjusting scrollTop.
+ * Two-finger pinch-to-zoom on the scroll container. Listeners are attached in
+ * the CAPTURE phase so they run before the SelectionOverlay's pointer handlers
+ * and can't be swallowed. Also ctrl/⌘ + wheel on desktop, and double-tap in a
+ * blank area handled elsewhere.
  */
-export function usePinchZoom(ref: RefObject<HTMLElement>) {
+export function usePinchZoom(ref: RefObject<HTMLElement>, ready?: unknown) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -19,15 +20,18 @@ export function usePinchZoom(ref: RefObject<HTMLElement>) {
       Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 
     const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 2) return;
-      pinching = true;
-      startDist = dist(e.touches);
-      startZoom = useReaderStore.getState().zoom;
+      if (e.touches.length === 2) {
+        pinching = true;
+        startDist = dist(e.touches) || 1;
+        startZoom = useReaderStore.getState().zoom;
+        e.preventDefault(); // stop the page from starting a scroll/selection
+      }
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (!pinching || e.touches.length !== 2) return;
       e.preventDefault();
+      e.stopPropagation();
       const ratio = dist(e.touches) / startDist;
       useReaderStore.getState().setZoom(startZoom * ratio);
     };
@@ -42,31 +46,18 @@ export function usePinchZoom(ref: RefObject<HTMLElement>) {
       useReaderStore.getState().nudgeZoom(e.deltaY > 0 ? -0.1 : 0.1);
     };
 
-    // double-tap to toggle 1x <-> 2x
-    let lastTap = 0;
-    const onTouchTap = (e: TouchEvent) => {
-      if (e.touches.length) return;
-      const now = Date.now();
-      if (now - lastTap < 280) {
-        const { zoom, setZoom } = useReaderStore.getState();
-        setZoom(zoom > 1.3 ? 1 : 2);
-        lastTap = 0;
-      } else {
-        lastTap = now;
-      }
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('touchend', onTouchTap, { passive: true });
+    // capture: true → we see the event before descendant handlers
+    el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+    el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    el.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchend', onTouchTap);
+      el.removeEventListener('touchstart', onTouchStart, { capture: true } as EventListenerOptions);
+      el.removeEventListener('touchmove', onTouchMove, { capture: true } as EventListenerOptions);
+      el.removeEventListener('touchend', onTouchEnd, { capture: true } as EventListenerOptions);
+      el.removeEventListener('touchcancel', onTouchEnd, { capture: true } as EventListenerOptions);
       el.removeEventListener('wheel', onWheel);
     };
-  }, [ref]);
+  }, [ref, ready]);
 }
