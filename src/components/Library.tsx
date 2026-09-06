@@ -44,7 +44,10 @@ export function Library() {
   return (
     <div className="library">
       <header className="lib-header glass glass-lit">
-        <h1>Audio Reader</h1>
+        <div className="lib-brand">
+          <img className="lib-logo" src="./logo.png" alt="" width="44" height="44" />
+          <h1>Audio Reader</h1>
+        </div>
         <p>Select a passage. Hear it read calmly, in English or Bangla.</p>
       </header>
 

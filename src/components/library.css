@@ -10,6 +10,16 @@
   padding: 24px 22px;
   margin-bottom: 18px;
 }
+.lib-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lib-logo {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
 .lib-header h1 {
   font-size: 24px;
   font-weight: 700;
