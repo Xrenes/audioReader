@@ -1,0 +1,10 @@
+# XTTS-v2 fine-tuning. Python 3.11 recommended (Coqui trainer is happiest there);
+# 3.12 works with the coqui-tts fork. A CUDA GPU with >=8 GB VRAM is strongly
+# recommended — CPU fine-tuning is impractically slow.
+coqui-tts>=0.25.0
+coqui-tts[server]>=0.25.0
+trainer>=0.2.0
+soundfile>=0.12
+pandas>=2.0
+# For NVIDIA: install the matching CUDA torch build FIRST, e.g.
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121

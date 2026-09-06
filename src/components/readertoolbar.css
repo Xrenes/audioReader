@@ -1,0 +1,53 @@
+.rtoolbar {
+  position: absolute;
+  z-index: 20;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+}
+
+.rtb-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  color: var(--text-secondary);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.rtb-btn:active {
+  background: var(--glass-highlight);
+  color: var(--text-primary);
+}
+
+.rtb-level {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  color: var(--text-tertiary);
+}
+
+.rtb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--glass-border);
+  margin: 0 4px;
+}
+
+.rtb-rotate.on {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+@media (min-width: 900px) {
+  .rtoolbar {
+    top: 14px;
+  }
+}

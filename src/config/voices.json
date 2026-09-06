@@ -1,0 +1,61 @@
+{
+  "$comment": "Named voices shown in the UI. 'Ahmed' and 'Akter' are DISPLAY NAMES only. Each maps to a real provider voice per language. provider can be 'piper' (offline, no key, model auto-downloads once), 'elevenlabs' (needs key, best English), 'azure' (needs key+region, best Bangla), or 'browser' (robotic fallback). Edit provider_voice_id then rebuild; swapping a provider here does not change the UI.",
+  "voices": [
+    {
+      "id": "ahmed",
+      "display_name": "Ahmed",
+      "gender": "male",
+      "enabled": true,
+      "byLang": {
+        "en": {
+          "provider": "piper",
+          "provider_voice_id": "en_US-ryan-medium",
+          "$alt_elevenlabs": "REPLACE_WITH_ELEVENLABS_MALE_VOICE_ID"
+        },
+        "bn": {
+          "provider": "piper",
+          "provider_voice_id": "bn-BD",
+          "$note": "community bn Piper model; set provider 'azure' + 'bn-BD-PradeepNeural' with a key for better quality",
+          "locale": "bn-BD"
+        }
+      }
+    },
+    {
+      "id": "akter",
+      "display_name": "Akter",
+      "gender": "female",
+      "enabled": true,
+      "byLang": {
+        "en": {
+          "provider": "piper",
+          "provider_voice_id": "en_US-amy-medium",
+          "$alt_elevenlabs": "REPLACE_WITH_ELEVENLABS_FEMALE_VOICE_ID"
+        },
+        "bn": {
+          "provider": "piper",
+          "provider_voice_id": "bn-BD",
+          "$note": "set provider 'azure' + 'bn-BD-NabanitaNeural' with a key for better quality",
+          "locale": "bn-BD"
+        }
+      }
+    },
+    {
+      "id": "you",
+      "display_name": "My Voice",
+      "gender": "unset",
+      "enabled": true,
+      "$note": "Cloned from your reference clip via the local XTTS server (xtts-server/). provider_voice_id = the .wav filename stem in xtts-server/voices/. Start the server (run.bat), set the XTTS URL in settings, then pick 'My Voice' for a slot.",
+      "byLang": {
+        "en": {
+          "provider": "xtts",
+          "provider_voice_id": "my_voice"
+        },
+        "bn": {
+          "provider": "xtts",
+          "provider_voice_id": "my_voice",
+          "$note": "XTTS has no Bangla; this will read bn text with an English model. Use Azure for real Bangla."
+        }
+      }
+    }
+  ]
+}

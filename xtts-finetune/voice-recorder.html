@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voice Recorder — XTTS fine-tune dataset</title>
+    <style>
+      :root {
+        --bg: #0b0b0d;
+        --panel: #16161a;
+        --line: rgba(255, 255, 255, 0.09);
+        --fg: rgba(255, 255, 255, 0.92);
+        --dim: rgba(255, 255, 255, 0.5);
+        --dimmer: rgba(255, 255, 255, 0.32);
+        --accent: #6ea8fe;
+        --good: #63d6a0;
+        --bad: #ff8f8f;
+        --radius: 14px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        padding: 24px 16px 80px;
+        max-width: 780px;
+        margin: 0 auto;
+        -webkit-font-smoothing: antialiased;
+      }
+      h1 { font-size: 20px; font-weight: 650; margin-bottom: 4px; }
+      .sub { color: var(--dim); font-size: 13px; margin-bottom: 20px; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-bottom: 14px;
+      }
+      .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      button {
+        font: inherit;
+        color: var(--fg);
+        background: #232329;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 9px 16px;
+        cursor: pointer;
+        transition: background 0.12s, opacity 0.12s;
+      }
+      button:hover { background: #2c2c34; }
+      button:disabled { opacity: 0.4; cursor: default; }
+      button.primary { background: var(--accent); color: #06121f; border-color: transparent; font-weight: 650; }
+      button.rec { background: #e05656; color: #fff; border-color: transparent; }
+      button.stop { background: #fff; color: #111; border-color: transparent; }
+      .prompt-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+      .counter { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 13px; }
+      .prompt-text {
+        font-size: 21px;
+        line-height: 1.45;
+        padding: 20px 4px;
+        min-height: 120px;
+        display: flex;
+        align-items: center;
+      }
+      .status { font-size: 12px; color: var(--dimmer); min-height: 16px; margin-top: 6px; }
+      .status.rec { color: var(--bad); }
+      .status.done { color: var(--good); }
+      .meter { height: 4px; background: #232329; border-radius: 999px; overflow: hidden; margin: 10px 0; }
+      .meter > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.06s linear; }
+      audio { width: 100%; margin-top: 10px; filter: invert(0.92) hue-rotate(180deg); }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; margin-top: 10px; }
+      .chip {
+        aspect-ratio: 1;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        background: #202027;
+        border: 1px solid var(--line);
+        cursor: pointer;
+        color: var(--dim);
+      }
+      .chip.done { background: rgba(99, 214, 160, 0.16); color: var(--good); border-color: transparent; }
+      .chip.current { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--fg); }
+      .bignum { font-size: 26px; font-weight: 650; }
+      .hint { font-size: 12.5px; color: var(--dim); }
+      code { background: #232329; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+      details { margin-top: 8px; }
+      summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+      .warn { color: var(--bad); font-size: 12.5px; margin-top: 8px; }
+      .ok { color: var(--good); }
+      ol { padding-left: 20px; }
+      ol li { margin: 4px 0; font-size: 13px; color: var(--dim); }
+    </style>
+  </head>
+  <body>
+    <h1>Voice Recorder</h1>
+    <div class="sub">
+      Record the prompts, then export a fine-tune dataset for
+      <code>xtts-finetune/dataset/</code>. Quiet room, normal pace, read each line exactly as shown.
+    </div>
+
+    <div class="card" id="permCard">
+      <div class="row">
+        <button class="primary" id="btnMic">Enable microphone</button>
+        <span class="hint" id="micHint">Needed to record. Nothing leaves this page.</span>
+      </div>
+      <div class="warn" id="fileWarn" hidden>
+        Opened from <code>file://</code> — mic may be blocked. If "Enable microphone" fails, serve this
+        folder instead: <code>python -m http.server 8090</code> then open
+        <code>http://localhost:8090/voice-recorder.html</code>.
+      </div>
+    </div>
+
+    <div class="card" id="mainCard" hidden>
+      <div class="prompt-nav">
+        <button id="prev">‹ Prev</button>
+        <span class="counter"><span id="idx">1</span> / <span id="total">–</span> &nbsp;·&nbsp;
+          <span id="doneCount">0</span> recorded</span>
+        <button id="next">Next ›</button>
+      </div>
+
+      <div class="prompt-text" id="promptText">…</div>
+      <div class="meter"><i id="meterBar"></i></div>
+
+      <div class="row">
+        <button class="rec" id="btnRec">● Record</button>
+        <button class="stop" id="btnStop" disabled>■ Stop</button>
+        <button id="btnPlay" disabled>▶ Play</button>
+        <button id="btnRedo" disabled>↺ Re-record</button>
+      </div>
+      <div class="status" id="status">No take yet for this prompt.</div>
+      <audio id="player" controls hidden></audio>
+
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content: space-between">
+        <div>
+          <div class="bignum"><span id="expDone">0</span> / <span id="expTotal">0</span></div>
+          <div class="hint">prompts recorded</div>
+        </div>
+        <button class="primary" id="btnExport" disabled>Export dataset (.zip)</button>
+      </div>
+      <details>
+        <summary>What the export contains &amp; where it goes</summary>
+        <ol>
+          <li>Unzip into <code>xtts-finetune/dataset/</code></li>
+          <li><code>wavs/0001.wav … NNNN.wav</code> — mono, 22.05 kHz, 16-bit</li>
+          <li><code>metadata.csv</code> — <code>wavs/0001.wav|transcript|transcript</code> (LJSpeech / XTTS format)</li>
+          <li>Then run <code>xtts-finetune/finetune.py</code> — see <code>xtts-finetune/README.md</code></li>
+        </ol>
+      </details>
+      <div class="hint" id="saveNote" style="margin-top: 8px"></div>
+    </div>
+
+    <script>
+      // ---------- state ----------
+      const SR = 22050;
+      let prompts = [];
+      let lang = 'en';
+      let cur = 0;
+      let stream = null,
+        mediaRec = null,
+        analyser = null,
+        rafMeter = 0;
+      let takeBlobs = {}; // idx -> {wav: Blob, dur: number}
+      let recStart = 0;
+
+      const $ = (id) => document.getElementById(id);
+      if (location.protocol === 'file:') $('fileWarn').hidden = false;
+
+      // ---------- load prompts ----------
+      fetch('./prompts.json')
+        .then((r) => r.json())
+        .then((d) => {
+          prompts = d.prompts || [];
+          lang = d.language || 'en';
+          $('total').textContent = prompts.length;
+          $('expTotal').textContent = prompts.length;
+          buildGrid();
+          render();
+        })
+        .catch(() => {
+          // fallback: minimal built-in set if prompts.json can't be fetched (file://)
+          prompts = [
+            'The morning light came slowly through the tall windows.',
+            'She set the cup down and turned another page.',
+            'There was no hurry, and the room was very quiet.',
+            'Rain had been falling since before dawn.',
+            'Every sentence seemed to have room to breathe.',
+          ];
+          $('total').textContent = prompts.length;
+          $('expTotal').textContent = prompts.length;
+          $('saveNote').innerHTML =
+            '<span class="warn">Could not load prompts.json (file:// restriction). Using a 5-line fallback set — serve the folder over http for the full list.</span>';
+          buildGrid();
+          render();
+        });
+
+      // ---------- mic ----------
+      $('btnMic').onclick = async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: 1,
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+          $('permCard').hidden = true;
+          $('mainCard').hidden = false;
+          setupMeter();
+        } catch (e) {
+          $('micHint').innerHTML =
+            '<span class="warn">Mic blocked: ' + e.message + '</span>';
+        }
+      };
+
+      function setupMeter() {
+        const ac = new AudioContext();
+        const src = ac.createMediaStreamSource(stream);
+        analyser = ac.createAnalyser();
+        analyser.fftSize = 512;
+        src.connect(analyser);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        const loop = () => {
+          analyser.getByteTimeDomainData(buf);
+          let peak = 0;
+          for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i] - 128));
+          $('meterBar').style.width = Math.min(100, (peak / 128) * 140) + '%';
+          rafMeter = requestAnimationFrame(loop);
+        };
+        loop();
+      }
+
+      // ---------- record ----------
+      $('btnRec').onclick = () => {
+        if (!stream) return;
+        const chunks = [];
+        const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+        mediaRec = new MediaRecorder(stream, { mimeType: mime });
+        mediaRec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+        mediaRec.onstop = async () => {
+          const blob = new Blob(chunks, { type: mime });
+          const { wav, dur } = await toWav(blob);
+          takeBlobs[cur] = { wav, dur };
+          render();
+          const p = $('player');
+          p.src = URL.createObjectURL(wav);
+          p.hidden = false;
+        };
+        mediaRec.start();
+        recStart = performance.now();
+        $('btnRec').disabled = true;
+        $('btnStop').disabled = false;
+        $('status').className = 'status rec';
+        $('status').textContent = '● Recording…  read the line above, then Stop.';
+      };
+
+      $('btnStop').onclick = () => {
+        if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
+        $('btnRec').disabled = false;
+        $('btnStop').disabled = true;
+      };
+
+      $('btnPlay').onclick = () => {
+        const t = takeBlobs[cur];
+        if (!t) return;
+        const p = $('player');
+        p.src = URL.createObjectURL(t.wav);
+        p.hidden = false;
+        p.play();
+      };
+
+      $('btnRedo').onclick = () => {
+        delete takeBlobs[cur];
+        $('player').hidden = true;
+        render();
+      };
+
+      $('prev').onclick = () => {
+        cur = (cur - 1 + prompts.length) % prompts.length;
+        render();
+      };
+      $('next').onclick = () => {
+        cur = (cur + 1) % prompts.length;
+        render();
+      };
+
+      document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT') return;
+        if (e.code === 'Space') {
+          e.preventDefault();
+          if ($('btnStop').disabled) $('btnRec').click();
+          else $('btnStop').click();
+        } else if (e.code === 'ArrowRight') $('next').click();
+        else if (e.code === 'ArrowLeft') $('prev').click();
+        else if (e.code === 'Enter') $('btnPlay').click();
+      });
+
+      // ---------- render ----------
+      function buildGrid() {
+        const g = $('grid');
+        g.innerHTML = '';
+        prompts.forEach((_, i) => {
+          const c = document.createElement('div');
+          c.className = 'chip';
+          c.textContent = i + 1;
+          c.onclick = () => {
+            cur = i;
+            render();
+          };
+          g.appendChild(c);
+        });
+      }
+
+      function render() {
+        $('idx').textContent = cur + 1;
+        $('promptText').textContent = prompts[cur] || '';
+        const done = Object.keys(takeBlobs).length;
+        $('doneCount').textContent = done;
+        $('expDone').textContent = done;
+        $('btnExport').disabled = done === 0;
+
+        const t = takeBlobs[cur];
+        $('btnPlay').disabled = !t;
+        $('btnRedo').disabled = !t;
+        if (t) {
+          $('status').className = 'status done';
+          $('status').textContent = '✓ Take saved (' + t.dur.toFixed(1) + 's). Re-record or move on.';
+        } else {
+          $('status').className = 'status';
+          $('status').textContent = 'No take yet for this prompt.';
+          $('player').hidden = true;
+        }
+
+        [...$('grid').children].forEach((c, i) => {
+          c.classList.toggle('done', i in takeBlobs);
+          c.classList.toggle('current', i === cur);
+        });
+      }
+
+      // ---------- webm/opus -> mono 22.05k WAV ----------
+      async function toWav(blob) {
+        const arrbuf = await blob.arrayBuffer();
+        const ac = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(
+          1,
+          1,
+          SR,
+        );
+        // decode with a normal context (OfflineAudioContext can't decodeAudioData cross-rate reliably in all browsers)
+        const dctx = new (window.AudioContext || window.webkitAudioContext)();
+        const decoded = await dctx.decodeAudioData(arrbuf.slice(0));
+        dctx.close();
+
+        // resample to SR mono via OfflineAudioContext
+        const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * SR), SR);
+        const src = off.createBufferSource();
+        src.buffer = decoded;
+        src.connect(off.destination);
+        src.start();
+        const rendered = await off.startRendering();
+        const data = rendered.getChannelData(0);
+
+        // trim leading/trailing near-silence
+        const thr = 0.006;
+        let s = 0,
+          e = data.length - 1;
+        while (s < e && Math.abs(data[s]) < thr) s++;
+        while (e > s && Math.abs(data[e]) < thr) e--;
+        s = Math.max(0, s - SR * 0.08); // keep 80ms lead-in
+        e = Math.min(data.length - 1, e + SR * 0.12);
+        const clip = data.subarray(s, e + 1);
+
+        return { wav: encodeWav(clip, SR), dur: clip.length / SR };
+      }
+
+      function encodeWav(samples, sampleRate) {
+        const buf = new ArrayBuffer(44 + samples.length * 2);
+        const v = new DataView(buf);
+        const wr = (o, str) => {
+          for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i));
+        };
+        wr(0, 'RIFF');
+        v.setUint32(4, 36 + samples.length * 2, true);
+        wr(8, 'WAVE');
+        wr(12, 'fmt ');
+        v.setUint32(16, 16, true);
+        v.setUint16(20, 1, true);
+        v.setUint16(22, 1, true);
+        v.setUint32(24, sampleRate, true);
+        v.setUint32(28, sampleRate * 2, true);
+        v.setUint16(32, 2, true);
+        v.setUint16(34, 16, true);
+        wr(36, 'data');
+        v.setUint32(40, samples.length * 2, true);
+        let o = 44;
+        for (let i = 0; i < samples.length; i++, o += 2) {
+          let x = Math.max(-1, Math.min(1, samples[i]));
+          v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+        }
+        return new Blob([buf], { type: 'audio/wav' });
+      }
+
+      // ---------- export as zip (no library: store-only zip) ----------
+      $('btnExport').onclick = async () => {
+        const entries = [];
+        const idxs = Object.keys(takeBlobs)
+          .map(Number)
+          .sort((a, b) => a - b);
+        let meta = '';
+        for (let k = 0; k < idxs.length; k++) {
+          const i = idxs[k];
+          const name = String(k + 1).padStart(4, '0') + '.wav';
+          const bytes = new Uint8Array(await takeBlobs[i].wav.arrayBuffer());
+          entries.push({ name: 'wavs/' + name, data: bytes });
+          const line = prompts[i].replace(/\r?\n/g, ' ').trim();
+          meta += `wavs/${name}|${line}|${line}\n`;
+        }
+        entries.push({ name: 'metadata.csv', data: new TextEncoder().encode(meta) });
+        entries.push({
+          name: 'lang.txt',
+          data: new TextEncoder().encode(lang + '\n'),
+        });
+
+        const zip = makeStoreZip(entries);
+        const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'xtts-dataset.zip';
+        a.click();
+        $('saveNote').innerHTML =
+          '<span class="ok">Exported ' +
+          idxs.length +
+          ' clips.</span> Unzip into <code>xtts-finetune/dataset/</code> so you have <code>dataset/wavs/</code> and <code>dataset/metadata.csv</code>.';
+      };
+
+      // minimal store-only (no compression) ZIP writer
+      function makeStoreZip(files) {
+        const enc = [];
+        const central = [];
+        let offset = 0;
+        const crcTable = (() => {
+          const t = [];
+          for (let n = 0; n < 256; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+            t[n] = c >>> 0;
+          }
+          return t;
+        })();
+        const crc32 = (buf) => {
+          let c = 0xffffffff;
+          for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+          return (c ^ 0xffffffff) >>> 0;
+        };
+        const u16 = (n) => [n & 255, (n >>> 8) & 255];
+        const u32 = (n) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+
+        for (const f of files) {
+          const nameBytes = new TextEncoder().encode(f.name);
+          const crc = crc32(f.data);
+          const local = [].concat(
+            u32(0x04034b50),
+            u16(20),
+            u16(0),
+            u16(0),
+            u16(0),
+            u16(0),
+            u32(crc),
+            u32(f.data.length),
+            u32(f.data.length),
+            u16(nameBytes.length),
+            u16(0),
+          );
+          enc.push(new Uint8Array(local), nameBytes, f.data);
+          central.push({ nameBytes, crc, len: f.data.length, offset });
+          offset += local.length + nameBytes.length + f.data.length;
+        }
+        const cd = [];
+        let cdSize = 0;
+        for (const c of central) {
+          const rec = [].concat(
+            u32(0x02014b50),
+            u16(20),
+            u16(20),
+            u16(0),
+            u16(0),
+            u16(0),
+            u16(0),
+            u32(c.crc),
+            u32(c.len),
+            u32(c.len),
+            u16(c.nameBytes.length),
+            u16(0),
+            u16(0),
+            u16(0),
+            u16(0),
+            u32(0),
+            u32(c.offset),
+          );
+          cd.push(new Uint8Array(rec), c.nameBytes);
+          cdSize += rec.length + c.nameBytes.length;
+        }
+        const end = [].concat(
+          u32(0x06054b50),
+          u16(0),
+          u16(0),
+          u16(central.length),
+          u16(central.length),
+          u32(cdSize),
+          u32(offset),
+          u16(0),
+        );
+        const parts = [...enc, ...cd, new Uint8Array(end)];
+        let total = 0;
+        parts.forEach((p) => (total += p.length));
+        const out = new Uint8Array(total);
+        let o = 0;
+        parts.forEach((p) => {
+          out.set(p, o);
+          o += p.length;
+        });
+        return out;
+      }
+    </script>
+  </body>
+</html>

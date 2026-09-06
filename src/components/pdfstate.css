@@ -1,0 +1,74 @@
+.pdfstate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 28px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.pdfstate-icon {
+  font-size: 40px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.pdfstate-icon.spin {
+  animation: pdfstate-spin 1s linear infinite;
+}
+@keyframes pdfstate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pdfstate h2 {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.pdfstate p {
+  font-size: 13px;
+  max-width: 320px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.pdfstate-btn {
+  margin-top: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pdfstate-btn:active {
+  background: var(--glass-highlight);
+}
+
+.pdfstate-error .pdfstate-icon {
+  color: #ff9b9b;
+}
+
+/* slim inline banner (e.g. scanned-PDF notice above the pages) */
+.pdfstate-banner {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 12px 2px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  max-width: 520px;
+}
+.pdfstate-banner-icon {
+  font-size: 16px;
+  color: var(--accent);
+}

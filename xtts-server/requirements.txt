@@ -1,0 +1,8 @@
+# XTTS-v2 local voice-cloning server for Audio Reader.
+# Python 3.12 compatible via the community-maintained coqui-tts fork.
+coqui-tts>=0.25.0
+fastapi>=0.115
+uvicorn[standard]>=0.30
+soundfile>=0.12
+# CPU torch is pulled in by coqui-tts; for an NVIDIA GPU install the CUDA
+# build of torch first (see README) then `pip install -r requirements.txt`.

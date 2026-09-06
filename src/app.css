@@ -1,0 +1,13 @@
+.app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-void);
+  /* soft vignette so the flat black has depth behind the glass */
+  background-image: radial-gradient(
+    120% 80% at 50% -10%,
+    rgba(110, 168, 254, 0.06),
+    transparent 60%
+  );
+}

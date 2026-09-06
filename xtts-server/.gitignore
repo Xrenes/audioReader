@@ -1,0 +1,5 @@
+.venv/
+voices/*.wav
+!voices/.gitkeep
+__pycache__/
+*.pyc

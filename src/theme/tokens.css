@@ -1,0 +1,161 @@
+/* ============================================================
+   Audio Reader — frosted black design tokens
+   ============================================================ */
+
+:root {
+  /* --- surfaces --- */
+  --bg-void: #050506;
+  --bg-elevated: #0c0c0f;
+
+  /* glass chrome (nav, settings, audio bar, top bar) */
+  --glass-bg: rgba(18, 18, 22, 0.55);
+  --glass-bg-strong: rgba(20, 20, 26, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.04);
+  --glass-blur: 20px;
+  --glass-blur-strong: 32px;
+
+  /* --- text --- */
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary: rgba(255, 255, 255, 0.35);
+
+  /* --- accent (used sparingly, calm blue) --- */
+  --accent: #6ea8fe;
+  --accent-dim: rgba(110, 168, 254, 0.15);
+  --accent-a: #6ea8fe; /* voice A */
+  --accent-b: #f0a8c0; /* voice B */
+
+  /* --- shape --- */
+  --radius-sm: 12px;
+  --radius: 20px;
+  --radius-lg: 28px;
+  --radius-pill: 999px;
+
+  /* --- elevation --- */
+  --shadow-sheet: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-bar: 0 4px 24px rgba(0, 0, 0, 0.5);
+
+  /* --- motion --- */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 140ms;
+  --dur: 240ms;
+  --dur-slow: 380ms;
+
+  /* --- PDF reading surface (toggled by data-pdf-theme) --- */
+  --pdf-paper: #faf9f6;
+  --pdf-ink: #1a1a1a;
+
+  /* --- layout --- */
+  --topbar-h: 52px;
+  --audiobar-h: 96px;
+  --rail-w: 300px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* PDF surface theming — chrome stays glass-black regardless */
+[data-pdf-theme='dark'] {
+  --pdf-paper: #17171a;
+  --pdf-ink: #d8d8d5;
+}
+
+/* ============================================================
+   reset / base
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    'Noto Sans Bengali', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* ============================================================
+   reusable glass primitives
+   ============================================================ */
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sheet);
+}
+
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
+  border: 1px solid var(--glass-border);
+}
+
+/* subtle top highlight line that sells the "glass" look */
+.glass-lit {
+  position: relative;
+}
+.glass-lit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0) 40%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

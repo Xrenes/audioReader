@@ -1,0 +1,8 @@
+.venv/
+dataset/wavs/
+dataset/*.csv
+dataset/lang.txt
+output/
+__pycache__/
+*.pyc
+xtts-dataset.zip
